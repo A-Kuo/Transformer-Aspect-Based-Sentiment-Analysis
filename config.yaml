@@ -1,0 +1,69 @@
+# ============================================================
+# BERT Aspect-Based Sentiment Analysis — Configuration
+# ============================================================
+# All hyperparameters and paths in one place.
+# Override via CLI: python main.py --config config.yaml
+
+# --- Model ---
+model:
+  name: "bert-base-uncased"          # HuggingFace model ID
+  num_aspect_labels: 5               # Product aspects to detect
+  num_sentiment_labels: 3            # negative / neutral / positive
+  max_seq_length: 256                # Token limit (covers 95%+ of reviews)
+  dropout: 0.1
+
+# --- Aspect label definitions ---
+# These map integer IDs to human-readable aspect categories.
+# The model's aspect head outputs a probability over these.
+aspects:
+  0: "quality"          # Build quality, materials, durability
+  1: "usability"        # Ease of use, UX, setup experience
+  2: "value"            # Price-to-quality ratio, deals
+  3: "shipping"         # Delivery speed, packaging
+  4: "customer_service" # Support, returns, responsiveness
+
+# --- Sentiment label definitions ---
+sentiments:
+  0: "negative"
+  1: "neutral"
+  2: "positive"
+
+# --- Data ---
+data:
+  dataset_name: "McAuley-Lab/Amazon-Reviews-2023"
+  dataset_subset: "raw_review_All_Beauty"   # Start small; swap for larger category later
+  train_size: 5000                          # Phase 1 prototype size
+  val_size: 1000
+  test_size: 500
+  seed: 42
+
+# --- Training ---
+training:
+  epochs: 3
+  batch_size: 16
+  learning_rate: 2.0e-5          # Standard BERT fine-tuning LR
+  weight_decay: 0.01
+  warmup_ratio: 0.1              # 10% of steps for LR warmup
+  fp16: true                     # Mixed-precision (2x speedup on GPU)
+  gradient_accumulation_steps: 2 # Effective batch = 16 * 2 = 32
+  save_strategy: "epoch"
+  eval_strategy: "epoch"
+  early_stopping_patience: 2
+
+# --- Inference ---
+inference:
+  batch_size: 32
+  device: "auto"                 # auto-detect GPU/CPU
+
+# --- Paths ---
+paths:
+  data_dir: "data/"
+  model_dir: "models/"
+  results_dir: "results/"
+  logs_dir: "results/logs/"
+
+# --- Monitoring thresholds (Phase 2) ---
+monitoring:
+  accuracy_floor: 0.92           # Alert if accuracy drops below this
+  latency_ceiling_ms: 500        # p99 latency SLA
+  drift_check_interval_hours: 24

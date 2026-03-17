@@ -1,0 +1,33 @@
+# Data & models (too large for git)
+data/
+models/
+*.bin
+*.pt
+*.safetensors
+
+# Results (regenerable)
+results/logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+.env
