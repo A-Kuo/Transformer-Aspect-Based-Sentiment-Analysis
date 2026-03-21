@@ -1,36 +1,28 @@
 # BERT Sentiment V2 — Iteration Plan
 
-## Portfolio Thesis
+## Motivation
 
-Projects 1, 2, and 3 share one thread: **AI systems that know where they break.**
-
-- Project 1 (Hallucination Detection): LLMs that flag when their own outputs are unreliable
-- Project 2 (Warehouse Robotics): Edge agents that degrade gracefully under latency/hardware constraints
-- **Project 3 (Sentiment V2): Sentiment analysis that measures and surfaces its own failure modes**
-
-V1 was a clean BERT fine-tuning exercise. V2 is the hard question:
+V1 was a clean BERT fine-tuning exercise. V2 is the harder question:
 *What happens when the model is confidently wrong, and how do we build systems that catch it?*
 
 ---
 
-## The Drop-Off: What V2 Does NOT Try To Do
+## Scope
 
-V2 does not attempt to solve all 6 challenges from the research literature.
-It picks **three** — the three that form a coherent story about uncertainty-aware NLP.
+V2 does not attempt to solve all challenges from the research literature.
+It picks **three** that form a coherent story about uncertainty-aware NLP.
 
-**IN SCOPE (the hard-hitting trio):**
+**In scope:**
 
 1. **Sarcasm-Aware Routing** — Detect when the model will fail, route to a fallback
 2. **Multi-Aspect Span Extraction** — Fix V1's single-label architectural flaw
 3. **Quantum-Inspired Uncertainty Representation** — Replace naive softmax confidence with density matrix encoding
 
-**OUT OF SCOPE (acknowledged, not attempted):**
+**Out of scope (acknowledged, not attempted):**
 
-- Multilingual / cross-cultural bias → noted in writeup as future work
-- Domain adaptation → V2 stays on Amazon reviews
-- Full Airflow/Kafka production infra → writeup describes the vision, code stays at model level
-
-This mirrors Projects 1 and 2: go deep on the ML math, acknowledge the engineering periphery, don't pretend to build what you didn't build.
+- Multilingual / cross-cultural bias — future work
+- Domain adaptation — V2 stays on Amazon reviews
+- Full Airflow/Kafka production infra — described in docs, not implemented
 
 ---
 
@@ -79,10 +71,11 @@ where T = sequence length, c = BIO class. The joint loss becomes:
 When sarcasm probability is high, the system either inverts confidence, flags for human review,
 or routes to an LLM-based reanalysis path.
 
-**Why this matters for the portfolio:**
-This is the same pattern as Project 1 (hallucination detection via attention entropy).
-There, high entropy = "model is uncertain, don't trust the output."
-Here, high sarcasm score = "model will misclassify, route to fallback."
+**Motivation:**
+Sarcasm is the primary failure mode for sentiment classifiers. A routing gate before
+classification allows the system to detect when it will fail and handle those cases
+differently — the same uncertainty-aware pattern used in hallucination detection systems
+where high entropy triggers fallback behavior.
 
 **Architecture delta:**
 
@@ -121,7 +114,7 @@ If the answer is significant, the routing system has measurable value.
 
 **What changes:** Replace softmax confidence with density matrix representation of sentiment state.
 
-**Why this is the differentiator:**
+**Why density matrices over softmax:**
 Every other sentiment project reports `P(positive) = 0.73`. That number is uncalibrated
 and hides the structure of the uncertainty. A density matrix encodes:
 - Diagonal elements: probability of each sentiment class (same as softmax)
@@ -166,7 +159,7 @@ BERT [CLS] embedding (768-dim)
   positive and negative; "Excellent product" has low interference.
 - `von_neumann_entropy` — single scalar summarizing total uncertainty,
   mathematically grounded (unlike softmax temperature hacks)
-- Direct connection to the quantum NLP literature for interview discussion
+- Direct connection to the quantum NLP literature
 
 **Files touched:**
 - `src/quantum_uncertainty.py` — New (~150 lines)
@@ -199,11 +192,10 @@ Iteration 3 (Quantum-Inspired Uncertainty)
     │  Benefits from sarcasm routing (can validate: high entropy ↔ sarcasm?)
     │
     ▼
-Writeup Update: Revise PROJECT_3 markdown to reflect V2 architecture
+Documentation update to reflect V2 architecture
 ```
 
-Each iteration is independently demoable. If we only finish 1 and 2,
-that's still a strong portfolio piece. Iteration 3 is the ceiling-raiser.
+Each iteration is independently testable and demoable.
 
 ---
 
@@ -216,27 +208,5 @@ that's still a strong portfolio piece. Iteration 3 is the ceiling-raiser.
 | 3. Quantum | quantum_uncertainty.py | model, inference, evaluate | ~250 |
 | **Total** | **2 new files** | **5 modified** | **~750** |
 
-V1 was 3,099 lines. V2 adds ~750, bringing total to ~3,850.
+V1 was ~3,100 lines. V2 adds ~750, bringing total to ~3,850.
 The ratio is right: V2 is a targeted extension, not a rewrite.
-
----
-
-## What To Say In Interviews
-
-**"Why didn't you just use a bigger model?"**
-Bigger models don't fix sarcasm, negation, or multipolarity — those are architectural
-problems, not scale problems. V2 adds targeted modules for each failure mode
-instead of throwing parameters at the problem.
-
-**"Is the quantum stuff real quantum computing?"**
-No, and that's the point. Quantum probability theory gives us density matrices
-and von Neumann entropy as mathematical tools for representing semantic ambiguity.
-Running on a QPU doesn't help — NISQ hardware can't handle 768-dimensional embeddings.
-The math is the contribution, not the hardware.
-
-**"How does this connect to your other projects?"**
-All three projects build AI systems that know their own limits. Project 1 detects
-hallucinations via attention entropy. Project 2 handles edge hardware constraints
-with graceful degradation. Project 3 measures sentiment uncertainty via quantum-inspired
-density matrices and routes hard cases (sarcasm, ambiguity) to appropriate fallbacks.
-The thread is: reliable AI isn't about accuracy — it's about knowing when you're wrong.

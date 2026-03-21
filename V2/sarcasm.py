@@ -17,8 +17,8 @@ Our approach: detect sarcasm BEFORE classification, then route.
         └─ score ≥ 0.7  → INVERT: flip sentiment polarity
                                    (positive ↔ negative, neutral unchanged)
 
-This is the same architectural pattern as Project 1 (hallucination
-detection via attention entropy):
+This follows the uncertainty-aware routing pattern used in
+hallucination detection systems:
     High entropy → "model is uncertain, don't trust output"
     High sarcasm → "model will misclassify, route to fallback"
 

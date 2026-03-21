@@ -21,6 +21,7 @@ venv/
 # IDE
 .vscode/
 .idea/
+*.code-workspace
 *.swp
 *.swo
 
@@ -31,3 +32,9 @@ Thumbs.db
 # Misc
 *.log
 .env
+.env.*
+
+# Security
+*.key
+*.pem
+.netrc

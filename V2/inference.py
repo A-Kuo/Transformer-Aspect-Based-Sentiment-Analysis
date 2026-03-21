@@ -20,7 +20,7 @@ Pipeline (V2 with sarcasm-aware routing):
         ↓
     Output: {text, aspect, sentiment, sarcasm_score, sarcasm_route, ...}
 
-This is the same pattern as Project 1 (hallucination detection):
+This follows the uncertainty-aware routing pattern:
     High attention entropy → "model uncertain, flag output"
     High sarcasm score    → "model will misclassify, route to fallback"
 """

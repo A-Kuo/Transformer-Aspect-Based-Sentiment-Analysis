@@ -1,59 +1,68 @@
-# BERT Aspect-Based Sentiment Analysis at Scale
+# NLP Transformer Analysis
 
-**Problem:** Manually reviewing millions of product reviews is impossible. Generic sentiment models miss *what* customers are complaining about — a 3-star review might praise quality but trash shipping.
+Aspect-based sentiment analysis on product reviews using a fine-tuned BERT backbone.
 
-**Solution:** Fine-tuned BERT with dual classification heads: one for **aspect detection** (what is being discussed?) and one for **sentiment scoring** (positive / neutral / negative per aspect). This gives structured, actionable signal from unstructured text.
+The model predicts both **what** a review discusses (quality, shipping, value, usability, customer service) and **how** the reviewer feels about it (positive, neutral, negative).
 
-**Target metrics (Phase 1 prototype):**
-- Aspect identification: >90% accuracy
-- Sentiment classification: >88% accuracy  
-- Inference latency: <500ms p99
-- Throughput: 10k reviews/min (batch)
+## Installation
 
----
+```bash
+git clone https://github.com/A-Kuo/NLP-Transformer-Sentiments.git
+cd NLP-Transformer-Sentiments
+
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+
+pip install -e ".[dev]"
+```
 
 ## Quick Start
 
 ```bash
-# 1. Setup
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-
-# 2. Download data + train
-python main.py download
 python main.py train
+python main.py evaluate
+python main.py predict "Great quality but shipping took 3 weeks"
+python main.py info
+```
 
-# 3. Evaluate
-python main.py evaluate --checkpoint models/best/
+Or with `make`:
 
-# 4. Predict
-python main.py predict --text "Great quality but shipping took 3 weeks"
+```bash
+make train
+make evaluate
+make test
 ```
 
 ## Project Structure
 
-```
-bert-sentiment/
-├── config.yaml              # All hyperparameters (single source of truth)
-├── requirements.txt
+```text
+.
 ├── main.py                  # CLI entry point
+├── config.yaml              # All hyperparameters
+├── pyproject.toml           # Python packaging and tool config
+├── Makefile                 # Common workflow commands
+├── requirements.txt         # Pinned pip dependencies
 ├── src/
-│   ├── data.py              # Data loading, tokenization, aspect labeling
-│   ├── model.py             # BERT + dual heads (aspect + sentiment)
-│   ├── train.py             # Training loop, checkpointing, logging
-│   ├── inference.py         # Single-doc and batch prediction
-│   └── evaluate.py          # Metrics: accuracy, F1, per-aspect breakdown
+│   ├── __init__.py
+│   ├── data.py              # Data loading, tokenization, weak supervision
+│   ├── model.py             # BERT + dual classification heads
+│   ├── train.py             # Training loop, checkpointing, early stopping
+│   ├── inference.py         # Single and batch prediction
+│   └── evaluate.py          # Metrics, confusion matrices, latency reporting
 ├── tests/
-│   └── test_core.py         # Smoke tests for pipeline
+│   ├── __init__.py
+│   └── test_core.py         # Smoke tests for the full pipeline
+├── notebooks/               # Exploration and analysis notebooks
+├── V2/                      # Experimental iteration 2 track
+│   └── V2_ITERATION_PLAN.md
 ├── data/                    # Downloaded datasets (gitignored)
 ├── models/                  # Saved checkpoints (gitignored)
-├── results/                 # Metrics JSON, plots
-└── monitoring/              # Phase 2: drift detection, dashboards
+└── results/                 # Metrics JSON output
 ```
 
 ## Architecture
 
-```
+```text
 Amazon Review Text
       ↓
 [BERT Tokenizer] → input_ids, attention_mask
@@ -70,26 +79,56 @@ Amazon Review Text
 softmax  softmax
 ```
 
-## ML Mathematics
+Joint loss: `L = α · L_aspect + (1 − α) · L_sentiment`
 
-The dual-head architecture shares a BERT backbone and branches at the [CLS] token:
+Multi-task learning provides implicit regularization — the shared backbone must learn representations useful for both tasks, reducing overfitting on small datasets.
 
-- **Shared representation:** BERT's self-attention layers learn contextual embeddings where each token attends to every other token via scaled dot-product attention: `Attention(Q,K,V) = softmax(QK^T / √d_k) V`
-- **Aspect head:** Linear projection from 768-dim [CLS] → 5 aspect classes. Cross-entropy loss.
-- **Sentiment head:** Linear projection from 768-dim [CLS] → 3 sentiment classes. Cross-entropy loss.
-- **Joint loss:** `L = α * L_aspect + (1-α) * L_sentiment` where α balances the two tasks. Multi-task learning provides implicit regularization — the shared backbone must learn representations useful for *both* tasks, reducing overfitting.
+## Development
+
+```bash
+make install-dev    # Install with dev dependencies and pre-commit hooks
+make test           # Run full test suite
+make test-quick     # Run tests that skip BERT download (~440 MB)
+make lint           # Lint with ruff
+make lint-fix       # Auto-fix lint issues
+make clean          # Remove generated artifacts
+```
 
 ## Status
 
-- [x] Project scaffold + config
-- [ ] Data pipeline
-- [ ] Model architecture
-- [ ] Training loop
-- [ ] Inference pipeline
-- [ ] Evaluation suite
-- [ ] CLI entry point
-- [ ] Tests
+- [x] Project scaffold and config
+- [x] Data pipeline with weak supervision
+- [x] Model architecture (dual-head BERT)
+- [x] Training loop with mixed precision
+- [x] Inference pipeline
+- [x] Evaluation suite
+- [x] CLI entry point
+- [x] Smoke tests
+- [x] CI pipeline (GitHub Actions)
+- [ ] Exploration notebooks
+- [ ] V2: multi-aspect span extraction, sarcasm-aware routing, quantum-inspired uncertainty
 
----
+## Security Note
 
-*Phase 2 roadmap: Docker containerization, Airflow orchestration, Redis caching, Streamlit monitoring dashboard, automated drift detection & retraining.*
+This repository loads PyTorch checkpoints with `weights_only=False` (required for model state dicts containing custom objects). Only load checkpoints from trusted sources. The HuggingFace dataset loader uses `trust_remote_code=True` for the Amazon Reviews dataset.
+
+## Citation
+
+```bibtex
+@misc{kuo2026nlptransformer,
+  title   = {Aspect-Based Sentiment Analysis with BERT},
+  author  = {Austin Kuo},
+  year    = {2026},
+  url     = {https://github.com/A-Kuo/NLP-Transformer-Sentiments}
+}
+```
+
+## Acknowledgments
+
+- [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805) — Devlin et al., 2019
+- [Amazon Reviews 2023 Dataset](https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023) — McAuley et al.
+- [Hugging Face Transformers](https://github.com/huggingface/transformers)
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.
