@@ -2,7 +2,7 @@
 
 Aspect-based sentiment analysis on product reviews using a fine-tuned BERT backbone.
 
-The model predicts both **what** a review discusses (quality, shipping, value, usability, customer service) and **how** the reviewer feels about it (positive, neutral, negative).
+The model predicts both **what** a review discusses (quality, shipping, value, usability, customer service) and **how** the reviewer feels about it (positive, neutral, negative) while being mindful of sarcasm.
 
 ## Installation
 
