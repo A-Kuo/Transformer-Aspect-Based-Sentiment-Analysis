@@ -176,11 +176,16 @@ class TestDataPipeline:
         aspect_label:    scalar
         sentiment_label: scalar
         """
-        fake_data = [
-            {"text": "Great quality product, very durable", "rating": 5.0},
-            {"text": "Terrible shipping, arrived damaged", "rating": 1.0},
+        texts = [
+            "Great quality product, very durable",
+            "Terrible shipping, arrived damaged",
         ]
-        ds = ReviewDataset(fake_data, tokenizer, max_length=config["model"]["max_seq_length"])
+        aspect_labels = [assign_aspect(t) for t in texts]
+        sentiment_labels = [stars_to_sentiment(r) for r in [5, 1]]
+        ds = ReviewDataset(
+            texts, aspect_labels, sentiment_labels, tokenizer,
+            max_length=config["model"]["max_seq_length"],
+        )
 
         assert len(ds) == 2
 
@@ -193,11 +198,11 @@ class TestDataPipeline:
 
     def test_label_ranges(self, config, tokenizer):
         """Labels must be in valid ranges for cross-entropy."""
-        fake_data = [
-            {"text": f"Review {i}", "rating": float(r)}
-            for i, r in enumerate([1, 2, 3, 4, 5] * 2)
-        ]
-        ds = ReviewDataset(fake_data, tokenizer, max_length=256)
+        texts = [f"Review {i}" for i in range(10)]
+        ratings = [1, 2, 3, 4, 5] * 2
+        aspect_labels = [assign_aspect(t) for t in texts]
+        sentiment_labels = [stars_to_sentiment(int(r)) for r in ratings]
+        ds = ReviewDataset(texts, aspect_labels, sentiment_labels, tokenizer, max_length=256)
 
         for i in range(len(ds)):
             sample = ds[i]
@@ -357,7 +362,7 @@ class TestBackwardPass:
         )
         outputs["loss"].backward()
 
-        last_layer = model.backbone.encoder.layer[-1]
+        last_layer = model.bert.encoder.layer[-1]
         for param in last_layer.parameters():
             if param.grad is not None:
                 assert param.grad.abs().sum() > 0
@@ -390,11 +395,11 @@ class TestBackwardPass:
         )
         outputs["loss"].backward()
 
-        frozen_layer = model.backbone.encoder.layer[0]
+        frozen_layer = model.bert.encoder.layer[0]
         for param in frozen_layer.parameters():
             assert not param.requires_grad
 
-        unfrozen_layer = model.backbone.encoder.layer[11]
+        unfrozen_layer = model.bert.encoder.layer[11]
         has_grad = any(
             p.grad is not None and p.grad.abs().sum() > 0
             for p in unfrozen_layer.parameters()
