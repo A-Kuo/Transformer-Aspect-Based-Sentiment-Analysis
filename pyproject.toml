@@ -25,12 +25,18 @@ dev = [
     "ruff>=0.4.0",
     "pre-commit>=3.6.0",
 ]
+# V3 hybrid SSM stack: optional; requires CUDA-capable PyTorch on many platforms.
+# Without these, V3 falls back to a depthwise-conv + FFN block (CPU-friendly).
+v3 = [
+    "mamba-ssm>=2.2.0",
+    "causal-conv1d>=1.4.0",
+]
 
 [project.scripts]
 bert-sentiment = "main:main"
 
 [tool.setuptools.packages.find]
-include = ["src*"]
+include = ["src*", "V3*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -43,3 +49,6 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"V3/test_hybrid.py" = ["E402"]
