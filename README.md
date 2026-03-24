@@ -14,6 +14,9 @@ python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
 pip install -e ".[dev]"
+
+# Optional: Mamba2 middle blocks for V3 (Linux/CUDA typical; see V3/V3_ITERATION_PLAN.md)
+# pip install -e ".[v3]"
 ```
 
 ## Quick Start
@@ -55,6 +58,10 @@ make test
 ├── notebooks/               # Exploration and analysis notebooks
 ├── V2/                      # Experimental iteration 2 track
 │   └── V2_ITERATION_PLAN.md
+├── V3/                      # Iteration 3: hybrid SSM–attention backbone (see V3/V3_ITERATION_PLAN.md)
+│   ├── config_hybrid.yaml
+│   ├── model_hybrid.py
+│   └── main.py              # python -m V3.main train|predict|info
 ├── data/                    # Downloaded datasets (gitignored)
 ├── models/                  # Saved checkpoints (gitignored)
 └── results/                 # Metrics JSON output

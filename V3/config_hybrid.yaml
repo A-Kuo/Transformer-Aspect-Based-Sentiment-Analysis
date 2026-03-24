@@ -1,0 +1,87 @@
+# ============================================================
+# V3 — Hybrid SSM–Attention ABSA (builds on V2 scope)
+# ============================================================
+# Usage (from repo root):
+#   python -m V3.main train --config V3/config_hybrid.yaml
+#   pip install -e ".[v3]"   # optional Mamba2 (GPU); else CPU fallback SSM blocks
+
+model:
+  name: "bert-base-uncased"
+  num_aspect_labels: 5
+  num_sentiment_labels: 3
+  num_span_labels: 11
+  max_seq_length: 256
+  dropout: 0.1
+  span_extraction: true
+
+# --- V3: SSM sandwich (4 attention + 6 SSM + 2 attention encoder layers) ---
+ssm:
+  d_state: 64
+  d_conv: 4
+  expand: 2
+  num_early_attention: 4
+  num_ssm: 6
+  num_late_attention: 2
+
+loss_weights:
+  aspect: 0.2
+  sentiment: 0.4
+  span: 0.4
+
+aspects:
+  0: "quality"
+  1: "usability"
+  2: "value"
+  3: "shipping"
+  4: "customer_service"
+
+sentiments:
+  0: "negative"
+  1: "neutral"
+  2: "positive"
+
+data:
+  dataset_name: "McAuley-Lab/Amazon-Reviews-2023"
+  dataset_subset: "raw_review_All_Beauty"
+  train_size: 5000
+  val_size: 1000
+  test_size: 500
+  seed: 42
+
+training:
+  epochs: 3
+  batch_size: 16
+  learning_rate: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  fp16: true
+  gradient_accumulation_steps: 2
+  save_strategy: "epoch"
+  eval_strategy: "epoch"
+  early_stopping_patience: 2
+
+inference:
+  batch_size: 32
+  device: "auto"
+
+paths:
+  data_dir: "data/"
+  model_dir: "models_v3/"
+  results_dir: "results_v3/"
+  logs_dir: "results_v3/logs/"
+
+monitoring:
+  accuracy_floor: 0.92
+  latency_ceiling_ms: 500
+  drift_check_interval_hours: 24
+
+sarcasm:
+  enabled: true
+  low_threshold: 0.3
+  high_threshold: 0.7
+  features:
+    - punctuation_excess
+    - caps_ratio
+    - positive_negative_clash
+    - quotation_marks
+    - ellipsis_patterns
