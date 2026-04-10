@@ -87,7 +87,8 @@ This implementation uses a **multi-task transformer** approach:
 ```python
 from absa import AspectSentimentAnalyzer
 
-analyzer = AspectSentimentAnalyzer.from_pretrained("absa/restaurant-base")
+# Load from local checkpoint (see models/ directory after training)
+analyzer = AspectSentimentAnalyzer.from_pretrained("models/restaurant-base")
 
 result = analyzer.analyze(
     "The food was excellent but the waiter was rude and slow."
@@ -218,11 +219,6 @@ See integration with [Fine-Tuned-SEC-Filing-Extraction-Pipeline](https://github.
 ## Installation
 
 ```bash
-pip install transformer-absa
-```
-
-Or from source:
-```bash
 git clone https://github.com/A-Kuo/Transformer-Aspect-Based-Sentiment-Analysis.git
 cd Transformer-Aspect-Based-Sentiment-Analysis
 pip install -e .
@@ -235,8 +231,8 @@ pip install -e .
 ```python
 from absa import AspectSentimentAnalyzer
 
-# Load pre-trained model
-analyzer = AspectSentimentAnalyzer.from_pretrained("absa/restaurant-base")
+# Load from local checkpoint (see models/ directory after training)
+analyzer = AspectSentimentAnalyzer.from_pretrained("models/restaurant-base")
 
 # Analyze
 text = "The ambiance was lovely but the main course took forever."
@@ -271,9 +267,10 @@ ABSA has evolved through several paradigms:
 3. **End-to-end transformers** (2020-present): This implementation — unified architecture with biaffine pairing
 
 Key papers this implementation draws from:
-- Li et al. (2019) — Unified model with opinion span detection
-- Chen et al. (2020) — Biaffine attention for relation extraction
-- Recent work on generative ABSA (unified text-to-structure generation)
+
+- **Li et al. (2019)** — Xin Li, Lidong Bing, Piji Li, and Wai Lam. "A Unified Model for Opinion Target Extraction and Target Sentiment Prediction." *Proceedings of the AAAI Conference on Artificial Intelligence*, 33(01):6714–6721. AAAI 2019.
+- **Chen et al. (2020)** — Shaowei Chen, Yu Wang, Jie Liu, and Yubo Wang. "Inducing Target-Specific Latent Structures for Aspect Sentiment Classification." *Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)*, pages 5596–5607. ACL, 2020. *(Biaffine attention for aspect-opinion relational structure.)*
+- Recent work on generative ABSA (unified text-to-structure generation), e.g., Yan et al. (2021) "A Unified Generative Framework for Aspect-Based Sentiment Analysis," *ACL 2021*.
 
 ---
 
