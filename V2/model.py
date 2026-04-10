@@ -51,7 +51,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModel, AutoConfig
-from src.quantum_uncertainty import QuantumProjection
+from .quantum_uncertainty import QuantumProjection
 
 logger = logging.getLogger(__name__)
 

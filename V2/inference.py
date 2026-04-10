@@ -36,7 +36,8 @@ from transformers import AutoTokenizer
 from src.data import load_config
 from src.model import AspectSentimentModel, build_model
 from src.train import load_checkpoint
-from src.sarcasm import SarcasmDetector, apply_sarcasm_routing
+
+from .sarcasm import SarcasmDetector, apply_sarcasm_routing
 
 logger = logging.getLogger(__name__)
 
