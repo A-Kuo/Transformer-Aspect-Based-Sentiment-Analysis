@@ -1,218 +1,43 @@
 # Transformer Aspect-Based Sentiment Analysis
 
-**Fine-grained sentiment extraction with transformer architectures**
+**BERT-based aspect and sentiment modeling for product reviews**
 
-[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Transformers-yellow.svg)](https://huggingface.co/transformers)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org)
-[![Status](https://img.shields.io/badge/Status-Stable-green.svg)]()
 
-> *"'Positive' is not enough. Was the food good but the service slow? Was the battery life praised but the price criticized? Aspect-based sentiment tells you what people actually think about specific components."*
-
----
-
-## The Problem
-
-Standard sentiment analysis answers: *"Is this text positive or negative?"*
-
-Aspect-Based Sentiment Analysis (ABSA) answers: *"What aspects are mentioned, and what is the sentiment toward each?"*
-
-| Input | Standard SA | ABSA |
-|-------|-------------|------|
-| "Great food but terrible service" | Neutral/Confused | Food: Positive, Service: Negative |
-| "Battery lasts forever, price is steep" | Mixed | Battery: Positive, Price: Negative |
-| "Fast shipping, broken on arrival" | Negative | Shipping: Positive, Product Quality: Negative |
-
-ABSA is essential for:
-- Product review analysis (identify specific feature strengths/weaknesses)
-- Customer service triage (route based on aspect, not just sentiment)
-- Competitive intelligence (compare aspect-level sentiment across brands)
-- Financial sentiment (market reaction to specific corporate announcements)
+> *Standard sentiment asks “positive or negative?” This project asks “*which theme* (quality, shipping, …) and *what polarity*?” — using a shared transformer encoder and task-specific heads.*
 
 ---
 
-## Architecture
+## The problem
 
-This implementation uses a **multi-task transformer** approach:
+| Input | Plain sentiment | This project (ABSA-style) |
+|-------|-----------------|---------------------------|
+| “Great food but terrible service” | Often confused | Aspect + sentiment heads trained on weak labels (Amazon reviews) |
+| “Fast shipping, broken on arrival” | Negative overall | Separates shipping vs. quality signals where data supports it |
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     INPUT TEXT                                  │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              TRANSFORMER ENCODER (BERT/RoBERTa/DeBERTa)         │
-│                    Contextualized token representations           │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-           ┌──────────────┼──────────────┐
-           │              │              │
-           ▼              ▼              ▼
-┌─────────────────┐ ┌─────────────┐ ┌─────────────────┐
-│ Aspect Extraction│ │  Opinion   │ │ Sentiment       │
-│  (NER-style)     │ │  Term      │ │ Classification  │
-│                  │ │ Extraction │ │  (per aspect)   │
-│  {B-ASP, I-ASP,  │ │            │ │                 │
-│   B-OP, I-OP, O} │ │ {B-OP,    │ │ {Positive,     │
-│                  │ │  I-OP, O}  │ │  Negative,     │
-│                  │ │            │ │  Neutral}       │
-└────────┬────────┘ └──────┬──────┘ └────────┬────────┘
-         │                 │               │
-         └────────┬────────┘               │
-                  │                         │
-                  ▼                         │
-         ┌─────────────────┐                │
-         │  Aspect-Opinion  │                │
-         │    Pairing       │◄───────────────┘
-         │   (Association)  │
-         └────────┬─────────┘
-                  │
-                  ▼
-         ┌─────────────────┐
-         │  FINAL OUTPUT   │
-         │  (Aspect,       │
-         │   Opinion,      │
-         │   Sentiment)    │
-         │   Triples       │
-         └─────────────────┘
-```
+**Scope of this repository:** fine-tuning **BERT** (`bert-base-uncased`) on **McAuley-Lab/Amazon-Reviews-2023** with keyword weak supervision — not a drop-in PyPI package named `transformer-absa`. Install **from source** (below).
+
+There is **no** `pip install transformer-absa` or `from absa import …` in this codebase; use **`src.inference.Predictor`** and the CLI in `main.py`.
 
 ---
 
-## Features
+## Architecture (this repo)
 
-### 1. End-to-End Pipeline
+This implementation uses a **multi-task transformer** setup:
 
-```python
-from absa import AspectSentimentAnalyzer
+- **Shared encoder:** BERT producing token representations; **`[CLS]`** used for sequence-level heads.
+- **Aspect head:** `Linear(768 → K)` for a small set of aspect categories (config-driven).
+- **Sentiment head:** `Linear(768 → 3)` for negative / neutral / positive.
+- **Joint loss:** `L = α · L_aspect + (1 − α) · L_sentiment`.
 
-# Load from local checkpoint (see models/ directory after training)
-analyzer = AspectSentimentAnalyzer.from_pretrained("models/restaurant-base")
+Experimental tracks:
 
-result = analyzer.analyze(
-    "The food was excellent but the waiter was rude and slow."
-)
+- **`V2/`** — span BIO tagging, sarcasm routing, quantum-inspired uncertainty (see `V2/V2_ITERATION_PLAN.md`).
+- **`V3/`** — hybrid attention–SSM middle stack (`python -m V3.main`, see `V3/V3_ITERATION_PLAN.md`).
 
-print(result)
-# [
-#   AspectTriple(
-#     aspect="food",
-#     opinion="excellent",
-#     sentiment="positive",
-#     confidence=0.94
-#   ),
-#   AspectTriple(
-#     aspect="waiter",
-#     opinion="rude and slow",
-#     sentiment="negative",
-#     confidence=0.89
-#   )
-# ]
-```
-
-### 2. Multi-Domain Support
-
-Pre-trained models available for:
-- Restaurant reviews
-- Product reviews (electronics, apparel)
-- Financial news (corporate announcements)
-- Hotel/travel reviews
-
-### 3. Domain Adaptation
-
-Fine-tune on your specific domain with minimal data:
-
-```python
-from absa import Trainer
-
-trainer = Trainer(base_model="absa/general-base")
-trainer.train(
-    train_data="my_domain_annotations.jsonl",
-    epochs=3,
-    learning_rate=2e-5
-)
-trainer.save("my_domain_absa_model")
-```
-
-### 4. Batch Processing
-
-```python
-# Process thousands of reviews
-results = analyzer.analyze_batch(
-    texts=df['review_text'].tolist(),
-    batch_size=32,
-    show_progress=True
-)
-```
-
----
-
-## Technical Approach
-
-### Model Architecture
-
-**Base:** RoBERTa-base (best empirical performance for ABSA)
-
-**Modifications:**
-- Aspect extraction head: Token classification (BIO scheme)
-- Opinion extraction head: Token classification (BIO scheme)
-- Sentiment classification head: Sequence classification per aspect
-- Aspect-opinion pairing: Biaffine attention mechanism
-
-### Training Data
-
-Models trained on:
-- SemEval ABSA datasets (restaurant, laptop domains)
-- MAMS (multi-aspect multi-sentiment) dataset
-- Custom financial sentiment annotations for SEC filing analysis
-
-### Evaluation Metrics
-
-- **Aspect Extraction:** F1 (exact match)
-- **Opinion Extraction:** F1 (exact match)
-- **Sentiment Classification:** Accuracy per aspect
-- **End-to-End:** F1 on (Aspect, Opinion, Sentiment) triples
-
----
-
-## Performance
-
-| Domain | Aspect F1 | Opinion F1 | Sentiment Acc | End-to-End F1 |
-|--------|-----------|------------|---------------|---------------|
-| Restaurant | 0.84 | 0.78 | 0.91 | 0.76 |
-| Laptop | 0.81 | 0.75 | 0.89 | 0.73 |
-| Financial | 0.79 | 0.72 | 0.87 | 0.70 |
-
----
-
-## Usage in Financial Analysis
-
-Special integration with SEC filing analysis:
-
-```python
-from absa import FinancialSentimentAnalyzer
-from sec_extractor import extract_management_discussion
-
-# Extract MD&A section from 10-K
-mdna_text = extract_management_discussion("10-K-filing.pdf")
-
-# Analyze sentiment toward specific business aspects
-analyzer = FinancialSentimentAnalyzer()
-aspects = analyzer.analyze(
-    mdna_text,
-    aspect_categories=[
-        "revenue", "expenses", "competition",
-        "regulation", "supply_chain", "workforce"
-    ]
-)
-
-# Aspects now contains sentiment toward each business component
-# e.g., "supply_chain": negative ("ongoing disruptions")
-#       "revenue": positive ("record growth in Q3")
-```
-
-See integration with [Fine-Tuned-SEC-Filing-Extraction-Pipeline](https://github.com/A-Kuo/Fine-Tuned-SEC-Filing-Extraction-Pipeline).
+Conceptual ABSA diagrams in older docs (biaffine triples, restaurant “AspectTriple” APIs) are **not** implemented as a separate `absa` Python package here.
 
 ---
 
@@ -221,77 +46,108 @@ See integration with [Fine-Tuned-SEC-Filing-Extraction-Pipeline](https://github.
 ```bash
 git clone https://github.com/A-Kuo/Transformer-Aspect-Based-Sentiment-Analysis.git
 cd Transformer-Aspect-Based-Sentiment-Analysis
-pip install -e .
+
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+
+pip install -e ".[dev]"
+
+# Optional: Mamba2 middle blocks for V3 (Linux/CUDA typical; see V3/V3_ITERATION_PLAN.md)
+# pip install -e ".[v3]"
 ```
 
 ---
 
-## Quick Start
+## Quick start (CLI)
+
+```bash
+python main.py train
+python main.py evaluate
+python main.py predict "Great quality but shipping took 3 weeks"
+python main.py info
+```
+
+Or with `make`: `make train`, `make evaluate`, `make test`.
+
+---
+
+## Python API (local checkpoint)
+
+After `python main.py train`, load weights from disk (default: `models/checkpoint_best.pt`; paths in `config.yaml`).
 
 ```python
-from absa import AspectSentimentAnalyzer
+from src.inference import Predictor
 
-# Load from local checkpoint (see models/ directory after training)
-analyzer = AspectSentimentAnalyzer.from_pretrained("models/restaurant-base")
-
-# Analyze
-text = "The ambiance was lovely but the main course took forever."
-result = analyzer.analyze(text)
-
-for triple in result:
-    print(f"Aspect: {triple.aspect}")
-    print(f"Opinion: {triple.opinion}")
-    print(f"Sentiment: {triple.sentiment} ({triple.confidence:.2f})")
-    print()
+predictor = Predictor.from_checkpoint(
+    "models/checkpoint_best.pt",
+    config_path="config.yaml",
+)
+result = predictor.predict_one(
+    "The food was excellent but the waiter was rude and slow."
+)
+# result["aspect"], result["sentiment"], confidences, etc.
 ```
 
-Output:
-```
-Aspect: ambiance
-Opinion: lovely
-Sentiment: positive (0.92)
+Untrained heads (baseline): `Predictor.from_pretrained(config_path="config.yaml")`.
 
-Aspect: main course
-Opinion: took forever
-Sentiment: negative (0.88)
+---
+
+## Project layout
+
+```text
+.
+├── main.py              # CLI
+├── config.yaml          # Hyperparameters
+├── src/                 # data, model, train, inference, evaluate
+├── tests/test_core.py   # Smoke tests
+├── V2/                  # Experimental iteration 2
+├── V3/                  # Hybrid SSM–attention iteration 3
+├── models/              # Checkpoints (gitignored)
+└── results/             # Metrics (gitignored)
 ```
 
 ---
 
-## Research Context
+## ABSA landscape (brief)
 
-ABSA has evolved through several paradigms:
+1. **Feature-based & lexicon** (pre-neural): rules and polarity lexicons.
+2. **LSTM / CNN pipelines** (~2015–2019): staged target and opinion modeling.
+3. **End-to-end transformers** (2020–present): this repo uses a **single encoder + heads** on `[CLS]`; token-level extensions live under `V2/` / `V3/`.
 
-1. **Pipeline approaches** (2014-2018): Separate extraction + classification
-2. **Joint models** (2018-2020): Shared encoder, separate heads
-3. **End-to-end transformers** (2020-present): This implementation — unified architecture with biaffine pairing
+**Papers this work relates to:**
 
-Key papers this implementation draws from:
-
-- **Li et al. (2019)** — Xin Li, Lidong Bing, Piji Li, and Wai Lam. "A Unified Model for Opinion Target Extraction and Target Sentiment Prediction." *Proceedings of the AAAI Conference on Artificial Intelligence*, 33(01):6714–6721. AAAI 2019.
-- **Chen et al. (2020)** — Shaowei Chen, Yu Wang, Jie Liu, and Yubo Wang. "Inducing Target-Specific Latent Structures for Aspect Sentiment Classification." *Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)*, pages 5596–5607. ACL, 2020. *(Biaffine attention for aspect-opinion relational structure.)*
-- Recent work on generative ABSA (unified text-to-structure generation), e.g., Yan et al. (2021) "A Unified Generative Framework for Aspect-Based Sentiment Analysis," *ACL 2021*.
+- **Li et al. (2019)** — Xin Li, Lidong Bing, Piji Li, and Wai Lam. “A Unified Model for Opinion Target Extraction and Target Sentiment Prediction.” *AAAI 2019*. [Paper](https://ojs.aaai.org/index.php/AAAI/article/view/4383).
+- **Chen et al. (2020)** — Shaowei Chen, Yu Wang, Jie Liu, and Yubo Wang. “Inducing Target-Specific Latent Structures for Aspect Sentiment Classification.” *EMNLP 2020*.
+- **Yan et al. (2021)** — Hang Yan et al. “A Unified Generative Framework for Aspect-Based Sentiment Analysis.” *ACL 2021*.
 
 ---
 
-## Related Work
+## Related repositories
 
-- [Fine-Tuned-SEC-Filing-Extraction-Pipeline](https://github.com/A-Kuo/Fine-Tuned-SEC-Filing-Extraction-Pipeline) — Uses this ABSA for financial sentiment extraction
-- [NLPTransformerAnalysis-archive](https://github.com/A-Kuo/NLPTransformerAnalysis-archive) — Historical transformer analysis work
+- [Fine-Tuned-SEC-Filing-Extraction-Pipeline](https://github.com/A-Kuo/Fine-Tuned-SEC-Filing-Extraction-Pipeline) — optional downstream integration (not required for this repo).
+- [NLPTransformerAnalysis-archive](https://github.com/A-Kuo/NLPTransformerAnalysis-archive) — archived history.
+
+---
+
+## Security note
+
+Checkpoints are loaded with `weights_only=False` where PyTorch requires it for full state dicts. Only load checkpoints from trusted sources. The Hugging Face dataset loader may use `trust_remote_code=True` for the Amazon Reviews dataset.
 
 ---
 
 ## Citation
 
 ```bibtex
-@software{transformer_absa_2026,
-  author = {A-Kuo},
-  title = {Transformer Aspect-Based Sentiment Analysis},
-  url = {https://github.com/A-Kuo/Transformer-Aspect-Based-Sentiment-Analysis},
-  year = {2026}
+@misc{kuo2026transformer_absa,
+  title   = {Transformer Aspect-Based Sentiment Analysis with BERT},
+  author  = {Austin Kuo},
+  year    = {2026},
+  url     = {https://github.com/A-Kuo/Transformer-Aspect-Based-Sentiment-Analysis}
 }
 ```
 
 ---
 
-*Sentiment is not binary. Context is everything. April 2026.*
+## License
+
+MIT License — see [LICENSE](LICENSE).

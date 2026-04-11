@@ -19,6 +19,9 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
