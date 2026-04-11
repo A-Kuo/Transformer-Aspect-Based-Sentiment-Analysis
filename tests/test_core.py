@@ -26,7 +26,6 @@ Test hierarchy:
 
 import os
 import sys
-import json
 import tempfile
 from pathlib import Path
 
@@ -38,20 +37,19 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data import (
-    load_config,
-    assign_aspect,
-    stars_to_sentiment,
     ASPECT_KEYWORDS,
     ReviewDataset,
+    assign_aspect,
+    load_config,
+    stars_to_sentiment,
 )
-from src.model import AspectSentimentModel, build_model
-from src.inference import Predictor, format_prediction
 from src.evaluate import (
     _compute_classification_metrics,
-    _compute_latency_metrics,
     _compute_cross_task_metrics,
+    _compute_latency_metrics,
 )
-
+from src.inference import Predictor, format_prediction
+from src.model import AspectSentimentModel, build_model
 
 # ============================================================
 # Fixtures

@@ -53,12 +53,12 @@ Why dual heads sharing a backbone?
 """
 
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import AutoModel, AutoConfig
+from transformers import AutoModel
 
 logger = logging.getLogger(__name__)
 
@@ -377,7 +377,7 @@ if __name__ == "__main__":
 
     # Inference forward (no loss, with predictions)
     preds = model.predict(dummy_ids, dummy_mask)
-    print(f"\nInference forward pass:")
+    print("\nInference forward pass:")
     print(f"  aspect_preds:      {preds['aspect_preds']}")             # (4,)
     print(f"  aspect_confidence: {preds['aspect_confidence']}")        # (4,)
     print(f"  sentiment_preds:   {preds['sentiment_preds']}")          # (4,)
@@ -385,7 +385,7 @@ if __name__ == "__main__":
 
     # Test freeze
     model.freeze_backbone(num_layers_to_freeze=10)
-    print(f"\nAfter freezing 10 layers:")
+    print("\nAfter freezing 10 layers:")
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"  Trainable params: {trainable:,}")
     print(f"{'='*60}")

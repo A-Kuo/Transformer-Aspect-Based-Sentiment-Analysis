@@ -36,7 +36,6 @@ from pathlib import Path
 
 from src.data import load_config
 
-
 # ============================================================
 # Logging setup
 # ============================================================
@@ -69,9 +68,9 @@ def cmd_train(args: argparse.Namespace) -> None:
       - Gradient accumulation (effective batch = batch_size * accum_steps)
       - Early stopping on validation loss
     """
-    from src.train import Trainer
-    from src.model import build_model
     from src.data import create_dataloaders
+    from src.model import build_model
+    from src.train import Trainer
 
     config = load_config(args.config)
 
@@ -130,9 +129,9 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
 
     Saves results to results/metrics.json.
     """
-    from src.inference import Predictor
-    from src.evaluate import evaluate_model, save_metrics, print_report
     from src.data import create_dataloaders
+    from src.evaluate import evaluate_model, print_report, save_metrics
+    from src.inference import Predictor
 
     config = load_config(args.config)
     checkpoint_path = args.checkpoint
@@ -183,7 +182,7 @@ def cmd_predict(args: argparse.Namespace) -> None:
     """
     from src.inference import Predictor, format_prediction
 
-    config = load_config(args.config)
+    load_config(args.config)
     checkpoint_path = args.checkpoint
 
     if Path(checkpoint_path).exists():
@@ -286,12 +285,12 @@ def cmd_info(args: argparse.Namespace) -> None:
     print(f"  Max seq length: {config['model']['max_seq_length']} tokens")
     print(f"  Dropout:        {config['model']['dropout']}")
 
-    print(f"\nData:")
+    print("\nData:")
     print(f"  Dataset:        {config['data']['dataset_name']}")
     print(f"  Subset:         {config['data']['dataset_subset']}")
     print(f"  Train/Val/Test: {config['data']['train_size']}/{config['data']['val_size']}/{config['data']['test_size']}")
 
-    print(f"\nTraining:")
+    print("\nTraining:")
     t = config["training"]
     print(f"  Epochs:         {t['epochs']}")
     print(f"  Batch size:     {t['batch_size']} (effective: {t['batch_size'] * t['gradient_accumulation_steps']})")
@@ -300,11 +299,11 @@ def cmd_info(args: argparse.Namespace) -> None:
     print(f"  FP16:           {t['fp16']}")
     print(f"  Early stopping: patience={t['early_stopping_patience']}")
 
-    print(f"\nLabels:")
+    print("\nLabels:")
     print(f"  Aspects:    {list(config['aspects'].values())}")
     print(f"  Sentiments: {list(config['sentiments'].values())}")
 
-    print(f"\nPaths:")
+    print("\nPaths:")
     for k, v in config["paths"].items():
         print(f"  {k:15s} {v}")
 
@@ -317,7 +316,7 @@ def cmd_info(args: argparse.Namespace) -> None:
         ckpt = torch.load(model_dir / "checkpoint_best.pt", map_location="cpu", weights_only=False)
         print(f"\n[trained] Checkpoint found (epoch {ckpt['epoch']}, val_loss={ckpt['best_val_loss']:.4f})")
     else:
-        print(f"\n[untrained] No checkpoint yet. Run: python main.py train")
+        print("\n[untrained] No checkpoint yet. Run: python main.py train")
 
     if (results_dir / "metrics.json").exists():
         import json
@@ -325,7 +324,7 @@ def cmd_info(args: argparse.Namespace) -> None:
             m = json.load(f)
         print(f"[evaluated] Aspect acc: {m['aspect']['accuracy']:.3f} | Sentiment acc: {m['sentiment']['accuracy']:.3f}")
     else:
-        print(f"[unevaluated] Run: python main.py evaluate")
+        print("[unevaluated] Run: python main.py evaluate")
 
     print(f"\n{'='*60}\n")
 

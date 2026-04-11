@@ -33,22 +33,18 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict
 
 import numpy as np
-import torch
 from sklearn.metrics import (
     accuracy_score,
-    classification_report,
     confusion_matrix,
     f1_score,
     precision_recall_fscore_support,
 )
 
-from src.data import load_config, create_dataloaders
-from src.model import AspectSentimentModel, build_model
+from src.data import create_dataloaders, load_config
 from src.inference import Predictor
-from src.train import load_checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -278,7 +274,7 @@ def print_report(metrics: Dict) -> None:
         print(f"  Accuracy:    {m['accuracy']:.3f}")
         print(f"  Macro F1:    {m['macro_f1']:.3f}")
         print(f"  Weighted F1: {m['weighted_f1']:.3f}")
-        print(f"  Per-class:")
+        print("  Per-class:")
         for cls_name, cls_metrics in m["per_class"].items():
             print(
                 f"    {cls_name:20s}  "
@@ -289,14 +285,14 @@ def print_report(metrics: Dict) -> None:
             )
 
     lat = metrics["latency"]
-    print(f"\n--- LATENCY ---")
+    print("\n--- LATENCY ---")
     print(f"  p50:  {lat['p50_ms']:.1f}ms")
     print(f"  p95:  {lat['p95_ms']:.1f}ms")
     print(f"  p99:  {lat['p99_ms']:.1f}ms")
     print(f"  SLA:  {'✓ MET (<500ms)' if lat['meets_sla'] else '✗ BREACH'}")
 
     if "cross_task" in metrics:
-        print(f"\n--- PER-ASPECT SENTIMENT ---")
+        print("\n--- PER-ASPECT SENTIMENT ---")
         for name, vals in metrics["cross_task"].items():
             print(
                 f"  {name:20s}  "

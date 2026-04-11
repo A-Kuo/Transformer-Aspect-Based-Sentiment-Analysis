@@ -14,12 +14,6 @@ import argparse
 import logging
 import sys
 import time
-from pathlib import Path
-
-# Ensure repo root is on path when running `python V3/main.py` (not only `-m V3.main`)
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 
 from src.data import load_config
 

@@ -38,11 +38,11 @@ from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
+from torch.cuda.amp import GradScaler, autocast
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import OneCycleLR
-from torch.cuda.amp import GradScaler, autocast
 
-from src.data import load_config, create_dataloaders
+from src.data import create_dataloaders, load_config
 from src.model import AspectSentimentModel, build_model
 
 logger = logging.getLogger(__name__)
