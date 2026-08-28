@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from transformers import BertModel
 from transformers.modeling_outputs import BaseModelOutput
 
-from .quantum_uncertainty import QuantumProjection
+from src.quantum_uncertainty import QuantumProjection
 
 logger = logging.getLogger(__name__)
 
@@ -188,10 +188,17 @@ class HybridBertEncoder(nn.Module):
         encoder_attention_mask: Optional[torch.Tensor] = None,
         past_key_values: Optional[tuple] = None,
         use_cache: Optional[bool] = None,
+        position_ids: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
         output_hidden_states: bool = False,
         return_dict: bool = True,
+        **kwargs,
     ):
+        # position_ids and any other **kwargs (e.g. TransformersKwargs added by
+        # newer `transformers` releases) are absorbed here for forward
+        # compatibility with `BertModel.forward`'s call to `self.encoder(...)` —
+        # position is already baked into `hidden_states` via BERT's embeddings,
+        # so the SSM/attention layers below don't need it directly.
         all_hidden_states: tuple = ()
         all_self_attentions: tuple = ()
 

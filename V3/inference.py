@@ -12,10 +12,10 @@ import torch
 from transformers import AutoTokenizer
 
 from src.data import load_config
+from src.sarcasm import SarcasmDetector, apply_sarcasm_routing
 from src.train import load_checkpoint
 
 from .model_hybrid import AspectSentimentHybridModel, build_model
-from .sarcasm import SarcasmDetector, apply_sarcasm_routing
 from .span_extraction import decode_bio_spans
 
 logger = logging.getLogger(__name__)

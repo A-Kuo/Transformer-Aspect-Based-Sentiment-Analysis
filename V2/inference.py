@@ -27,17 +27,15 @@ This follows the uncertainty-aware routing pattern:
 
 import logging
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 import torch
 from transformers import AutoTokenizer
 
 from src.data import load_config
 from src.model import AspectSentimentModel, build_model
+from src.sarcasm import SarcasmDetector, apply_sarcasm_routing
 from src.train import load_checkpoint
-
-from .sarcasm import SarcasmDetector, apply_sarcasm_routing
 
 logger = logging.getLogger(__name__)
 

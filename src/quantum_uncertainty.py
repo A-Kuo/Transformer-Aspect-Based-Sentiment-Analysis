@@ -1,5 +1,7 @@
 """
-Quantum-Inspired Uncertainty Representation (V2 Iteration 3).
+Quantum-Inspired Uncertainty Representation.
+
+Shared by V2 and V3 (moved to src/ to eliminate duplicate copies).
 
 Why density matrices instead of softmax?
 
@@ -64,11 +66,10 @@ References:
 """
 
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Dict
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
 
@@ -415,7 +416,7 @@ if __name__ == "__main__":
     ent = von_neumann_entropy(rho)
     interf = interference_magnitude(rho)
 
-    print(f"\nTest 1: Pure state |1,0,0⟩")
+    print("\nTest 1: Pure state |1,0,0⟩")
     print(f"  probs:        {probs[0].tolist()}")
     print(f"  entropy:      {ent[0].item():.6f} (expected: ~0)")
     print(f"  interference: {interf[0].item():.6f} (expected: ~0)")
@@ -435,7 +436,7 @@ if __name__ == "__main__":
     ent2 = von_neumann_entropy(rho2)
     interf2 = interference_magnitude(rho2)
 
-    print(f"\nTest 2: Superposition |1/√2, 1/√2, 0⟩")
+    print("\nTest 2: Superposition |1/√2, 1/√2, 0⟩")
     print(f"  probs:        {[round(p, 3) for p in probs2[0].tolist()]}")
     print(f"  entropy:      {ent2[0].item():.6f} (expected: ~0, pure state)")
     print(f"  interference: {interf2[0].item():.6f} (expected: >0)")
@@ -446,7 +447,7 @@ if __name__ == "__main__":
     print("  ✅ PASSED (interference captures ambiguity, entropy stays 0 for pure states)")
 
     # Test 3: QuantumProjection layer
-    print(f"\nTest 3: QuantumProjection(768→3)")
+    print("\nTest 3: QuantumProjection(768→3)")
     proj = QuantumProjection(input_dim=768, num_classes=3)
     fake_cls = torch.randn(B, 768)
     output = proj(fake_cls)
@@ -464,7 +465,7 @@ if __name__ == "__main__":
     print("  ✅ PASSED")
 
     # Test 4: Uncertainty classification
-    print(f"\nTest 4: classify_uncertainty()")
+    print("\nTest 4: classify_uncertainty()")
     ent_test = torch.tensor([0.01, 0.5, 1.0])
     interf_test = torch.tensor([0.0, 0.2, 0.8])
     cats = classify_uncertainty(ent_test, interf_test, num_classes=3)

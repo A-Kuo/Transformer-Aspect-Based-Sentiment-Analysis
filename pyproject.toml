@@ -31,6 +31,10 @@ v3 = [
     "mamba-ssm>=2.2.0",
     "causal-conv1d>=1.4.0",
 ]
+notebooks = [
+    "jupyter>=1.0.0",
+    "ipykernel>=6.29.0",
+]
 
 [project.scripts]
 bert-sentiment = "main:main"
@@ -49,6 +53,3 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
 ignore = ["E501"]
-
-[tool.ruff.lint.per-file-ignores]
-"V3/test_hybrid.py" = ["E402"]

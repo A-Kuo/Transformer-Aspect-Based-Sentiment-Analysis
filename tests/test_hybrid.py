@@ -2,23 +2,16 @@
 Smoke tests for V3 hybrid backbone, span decode, and sarcasm routing.
 
 Requires: transformers, torch (same as main tests). Optional: mamba-ssm on CUDA.
-Run from repo root: pytest V3/test_hybrid.py -v
+Run from repo root: pytest tests/test_hybrid.py -v
 """
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pytest
 import torch
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
+from src.sarcasm import SarcasmDetector, apply_sarcasm_routing
 from V3.model_hybrid import AspectSentimentHybridModel, BidirectionalSSMBlock
-from V3.sarcasm import SarcasmDetector, apply_sarcasm_routing
 from V3.span_extraction import bio_b, decode_bio_spans, label_id_to_aspect_id
 
 

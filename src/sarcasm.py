@@ -1,5 +1,7 @@
 """
-Sarcasm-Aware Routing for Sentiment Analysis (V2).
+Sarcasm-Aware Routing for Sentiment Analysis.
+
+Shared by V2 and V3 (moved to src/ to eliminate duplicate copies).
 
 The core insight from the research literature:
     Sarcasm is the #1 failure mode for sentiment classifiers.
