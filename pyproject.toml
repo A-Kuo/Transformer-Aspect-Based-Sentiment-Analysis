@@ -39,6 +39,15 @@ app = [
     "streamlit>=1.38.0",
     "altair>=5.0.0",
 ]
+# Neon-backed model registry (src/db.py) + Hugging Face Hub weight
+# delivery: used by app.py (optional — falls back gracefully if
+# unavailable) and by scripts/load_absa_results.py (required).
+db = [
+    "sqlalchemy>=2.0.0",
+    "psycopg[binary]>=3.1.0",
+    "python-dotenv>=1.0.0",
+    "huggingface_hub>=0.24.0",
+]
 
 [project.scripts]
 bert-sentiment = "main:main"

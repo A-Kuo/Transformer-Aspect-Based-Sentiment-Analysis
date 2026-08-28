@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install ruff
-      - run: ruff check src/ tests/ main.py V2/ V3/ app.py
+      - run: ruff check src/ tests/ main.py V2/ V3/ app.py scripts/
 
   test:
     runs-on: ubuntu-latest

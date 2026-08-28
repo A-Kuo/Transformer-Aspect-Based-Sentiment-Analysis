@@ -9,13 +9,24 @@ the model live.
 Run from the repo root:
     streamlit run app.py
 
-Uses a trained checkpoint at models/checkpoint_best.pt if one exists
-(produced by `python main.py train`); otherwise falls back to the untrained
-baseline, same as notebooks/01_inference_walkthrough.ipynb, with a clear
-banner so predictions aren't mistaken for a trained model's output.
+Model source, in priority order:
+  1. The Neon-backed model registry (src/db.py): the currently-active
+     training run pushed from a Kaggle notebook via
+     scripts/load_absa_results.py, with weights downloaded from Hugging
+     Face Hub. This is the only source with a genuinely trained model.
+  2. A local checkpoint at models/checkpoint_best.pt, if one exists
+     (produced by `python main.py train`).
+  3. The untrained baseline (random head weights), same as
+     notebooks/01_inference_walkthrough.ipynb — with a clear banner so
+     predictions aren't mistaken for a trained model's output.
+A missing/unconfigured DATABASE_URL, an unreachable Neon instance, or a
+failed Hugging Face download all fall through to the next source rather
+than crashing the app — see load_predictor().
 """
 
 import html
+import logging
+import os
 import time
 from pathlib import Path
 
@@ -24,6 +35,8 @@ import pandas as pd
 import streamlit as st
 
 from src.inference import Predictor
+
+logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent
 CHECKPOINT_PATH = ROOT / "models" / "checkpoint_best.pt"
@@ -80,15 +93,63 @@ EXAMPLE_REVIEWS = {
 # Caching: load the model once per session
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _load_from_neon():
+    """Try the Neon-backed model registry + Hugging Face Hub weights.
+
+    Returns (predictor, active_run) on success, or None if unavailable for
+    any reason (no DATABASE_URL, Neon unreachable, no active run, HF
+    download failure, missing optional dependencies, ...). Imports are
+    deliberately local to this function: if the `db` extras group isn't
+    installed, the resulting ImportError is just another reason to fall
+    through to the next model source, not a reason to crash before
+    st.set_page_config() even runs.
+    """
+    try:
+        from dotenv import load_dotenv
+        from huggingface_hub import hf_hub_download
+        from sqlalchemy import create_engine
+
+        from src.db import ensure_schema, get_active_run, resolve_database_url
+
+        load_dotenv()
+        database_url = resolve_database_url()
+        if not database_url:
+            return None
+
+        engine = create_engine(database_url)
+        ensure_schema(engine)
+        run = get_active_run(engine)
+        if run is None:
+            return None
+
+        local_path = hf_hub_download(
+            repo_id=run["hf_repo_id"],
+            filename=run["hf_filename"],
+            revision=run["hf_revision"],
+            token=os.environ.get("HF_TOKEN") or None,
+        )
+        predictor = Predictor.from_checkpoint(local_path, config_path=str(CONFIG_PATH))
+        return predictor, run
+    except Exception:
+        logger.exception("Neon/HF-backed model unavailable; falling back")
+        return None
+
+
 @st.cache_resource(show_spinner=False)
 def load_predictor():
+    neon_result = _load_from_neon()
+    if neon_result is not None:
+        predictor, run = neon_result
+        return predictor, "neon", run
+
     if CHECKPOINT_PATH.exists():
         predictor = Predictor.from_checkpoint(
             str(CHECKPOINT_PATH), config_path=str(CONFIG_PATH)
         )
-        return predictor, True
+        return predictor, "local", None
+
     predictor = Predictor.from_pretrained(config_path=str(CONFIG_PATH))
-    return predictor, False
+    return predictor, "baseline", None
 
 
 @st.cache_data(show_spinner=False)
@@ -107,17 +168,17 @@ def initialize_with_progress():
         )
         bar = st.progress(0, text="Loading configuration…")
         time.sleep(0.1)
-        bar.progress(20, text="Loading BERT tokenizer + encoder (first run downloads weights)…")
-        predictor, has_checkpoint = load_predictor()
+        bar.progress(20, text="Checking for a trained model (Neon registry, then local checkpoint)…")
+        predictor, source, active_run = load_predictor()
         bar.progress(80, text="Model ready. Rendering dashboard…")
         time.sleep(0.1)
         bar.progress(100, text="Done.")
         time.sleep(0.15)
     placeholder.empty()
-    return predictor, has_checkpoint
+    return predictor, source, active_run
 
 
-predictor, has_checkpoint = initialize_with_progress()
+predictor, model_source, active_run = initialize_with_progress()
 config = predictor.config
 
 
@@ -242,6 +303,58 @@ def render_gallery_table(results: list) -> None:
     )
 
 
+def render_per_class_table(per_class: dict) -> None:
+    rows_html = "".join(
+        f'<tr>'
+        f'<td style="padding:6px 10px;border-bottom:1px solid rgba(128,128,128,0.25);">{html.escape(cls)}</td>'
+        f'<td style="padding:6px 10px;border-bottom:1px solid rgba(128,128,128,0.25);">{m["precision"]:.3f}</td>'
+        f'<td style="padding:6px 10px;border-bottom:1px solid rgba(128,128,128,0.25);">{m["recall"]:.3f}</td>'
+        f'<td style="padding:6px 10px;border-bottom:1px solid rgba(128,128,128,0.25);">{m["f1"]:.3f}</td>'
+        f'<td style="padding:6px 10px;border-bottom:1px solid rgba(128,128,128,0.25);">{m["support"]}</td>'
+        f'</tr>'
+        for cls, m in per_class.items()
+    )
+    st.markdown(
+        f"""
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+            <thead>
+                <tr style="text-align:left;border-bottom:2px solid rgba(128,128,128,0.4);">
+                    <th style="padding:6px 10px;">Class</th>
+                    <th style="padding:6px 10px;">Precision</th>
+                    <th style="padding:6px 10px;">Recall</th>
+                    <th style="padding:6px 10px;">F1</th>
+                    <th style="padding:6px 10px;">Support</th>
+                </tr>
+            </thead>
+            <tbody>{rows_html}</tbody>
+        </table>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_confusion_matrix(matrix: list, labels: list) -> None:
+    header_cells = "".join(
+        f'<th style="padding:6px 10px;text-align:center;">{html.escape(lbl)}</th>' for lbl in labels
+    )
+    body_rows = []
+    for row_label, row in zip(labels, matrix):
+        cells = "".join(f'<td style="padding:6px 10px;text-align:center;">{v}</td>' for v in row)
+        body_rows.append(
+            f'<tr><th style="padding:6px 10px;text-align:left;">{html.escape(row_label)}</th>{cells}</tr>'
+        )
+    st.caption("Rows: true label. Columns: predicted label.")
+    st.markdown(
+        f"""
+        <table style="border-collapse:collapse;font-size:13px;">
+            <thead><tr><th></th>{header_cells}</tr></thead>
+            <tbody>{"".join(body_rows)}</tbody>
+        </table>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Sidebar
 # ─────────────────────────────────────────────────────────────────────────────
@@ -253,18 +366,28 @@ with st.sidebar:
 
     st.markdown("**NAVIGATION**")
     page = st.radio(
-        "Select page:", ["Live Triage", "Example Gallery"], label_visibility="collapsed"
+        "Select page:",
+        ["Live Triage", "Example Gallery", "Model Info"],
+        label_visibility="collapsed",
     )
     st.divider()
 
-    if has_checkpoint:
+    if model_source == "neon":
+        st.success(
+            f"Loaded trained run **{active_run['model_version']}**\n\n"
+            f"`{active_run['hf_repo_id']}` @ `{active_run['hf_revision'][:8]}` "
+            "(via Neon registry + Hugging Face Hub)"
+        )
+    elif model_source == "local":
         st.success(f"Loaded checkpoint:\n\n`{CHECKPOINT_PATH.relative_to(ROOT)}`")
     else:
         st.warning(
             "No trained checkpoint found — using the **untrained baseline** "
             "(random head weights). Predictions below are not meaningful yet.\n\n"
-            "Run `python main.py train` to produce `models/checkpoint_best.pt`, "
-            "then reload this page."
+            "Run `python main.py train` to produce `models/checkpoint_best.pt` "
+            "locally, or push a trained run to the Neon registry (see "
+            "`notebooks/kaggle_train_and_push.ipynb` and "
+            "`scripts/load_absa_results.py`), then reload this page."
         )
 
     st.caption(f"Encoder: {config['model']['name']}")
@@ -282,7 +405,7 @@ if page == "Live Triage":
         "the predicted **aspect** (what the review is about) and **sentiment** "
         "(positive / neutral / negative), each with a confidence breakdown."
     )
-    if not has_checkpoint:
+    if model_source == "baseline":
         st.info(
             "Running on the untrained baseline — predictions are essentially "
             "random until a checkpoint is trained. This page still works end "
@@ -323,7 +446,7 @@ elif page == "Example Gallery":
         "A batch of curated reviews run through the model, for a quick look "
         "at how it behaves across positive, negative, neutral, and mixed-signal cases."
     )
-    if not has_checkpoint:
+    if model_source == "baseline":
         st.info(
             "Running on the untrained baseline — the aspect/sentiment columns "
             "below are essentially random until a checkpoint is trained.",
@@ -338,3 +461,70 @@ elif page == "Example Gallery":
     st.caption(
         "Want to try your own text? Switch to **Live Triage** in the sidebar."
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Page: Model Info
+# ─────────────────────────────────────────────────────────────────────────────
+
+elif page == "Model Info":
+    st.title("Model Info")
+    st.markdown(
+        "Provenance and evaluation metrics for the model currently loaded above, "
+        "pulled from the Neon-backed model registry once a trained run has been pushed."
+    )
+
+    if model_source == "neon" and active_run is not None:
+        run = active_run
+        st.subheader(run["model_version"])
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Track", run["track"])
+        c2.metric("Environment", run["environment"])
+        c3.metric("Run timestamp (UTC)", run["run_timestamp"].strftime("%Y-%m-%d %H:%M"))
+        st.caption(
+            f"Weights: `{run['hf_repo_id']}` @ `{run['hf_revision'][:8]}` "
+            f"(`{run['hf_filename']}`)"
+        )
+        if run.get("notes"):
+            st.caption(f"Notes: {run['notes']}")
+
+        metrics = run["metrics"]
+        st.divider()
+        st.subheader("Evaluation metrics")
+        st.caption(f"Evaluated on {metrics.get('num_samples', '?')} held-out samples.")
+
+        for task in ("aspect", "sentiment"):
+            task_metrics = metrics.get(task)
+            if not task_metrics:
+                continue
+            st.markdown(f"**{task.capitalize()}**")
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Accuracy", f"{task_metrics['accuracy']:.1%}")
+            m2.metric("Macro F1", f"{task_metrics['macro_f1']:.1%}")
+            m3.metric("Weighted F1", f"{task_metrics['weighted_f1']:.1%}")
+            render_per_class_table(task_metrics["per_class"])
+            with st.expander(f"{task.capitalize()} confusion matrix"):
+                render_confusion_matrix(
+                    task_metrics["confusion_matrix"], list(task_metrics["per_class"].keys())
+                )
+
+        latency = metrics.get("latency")
+        if latency:
+            st.markdown("**Latency**")
+            l1, l2, l3 = st.columns(3)
+            l1.metric("p50", f"{latency['p50_ms']:.1f}ms")
+            l2.metric("p95", f"{latency['p95_ms']:.1f}ms")
+            l3.metric(
+                "p99",
+                f"{latency['p99_ms']:.1f}ms",
+                delta="SLA met" if latency.get("meets_sla") else "SLA breach",
+                delta_color="normal" if latency.get("meets_sla") else "inverse",
+            )
+    else:
+        st.info(
+            "No trained run recorded in the Neon registry yet. Train on Kaggle "
+            "(`notebooks/kaggle_train_and_push.ipynb`) and push the results with "
+            "`python scripts/load_absa_results.py results.json` to see metrics here.",
+            icon="ℹ️",
+        )
