@@ -68,7 +68,7 @@ def cmd_train(args: argparse.Namespace) -> None:
       - Gradient accumulation (effective batch = batch_size * accum_steps)
       - Early stopping on validation loss
     """
-    from src.data import create_dataloaders
+    from src.data import compute_class_weights, create_dataloaders
     from src.model import build_model
     from src.train import Trainer
 
@@ -87,7 +87,25 @@ def cmd_train(args: argparse.Namespace) -> None:
     logging.info("=" * 60)
 
     dataloaders = create_dataloaders(config)
-    model = build_model(config)
+
+    aspect_class_weights = None
+    sentiment_class_weights = None
+    if config["training"].get("class_weighted_loss", False):
+        train_dataset = dataloaders["train"].dataset
+        aspect_class_weights = compute_class_weights(
+            train_dataset.aspect_labels, config["model"]["num_aspect_labels"]
+        )
+        sentiment_class_weights = compute_class_weights(
+            train_dataset.sentiment_labels, config["model"]["num_sentiment_labels"]
+        )
+        logging.info(f"Class-weighted loss enabled. Aspect weights: {aspect_class_weights.tolist()}")
+        logging.info(f"Class-weighted loss enabled. Sentiment weights: {sentiment_class_weights.tolist()}")
+
+    model = build_model(
+        config,
+        aspect_class_weights=aspect_class_weights,
+        sentiment_class_weights=sentiment_class_weights,
+    )
 
     # Optional: freeze early layers for small dataset
     if args.freeze is not None and args.freeze > 0:

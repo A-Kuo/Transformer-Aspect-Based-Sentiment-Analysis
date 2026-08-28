@@ -49,6 +49,11 @@ training:
   save_strategy: "epoch"
   eval_strategy: "epoch"
   early_stopping_patience: 2
+  # Amazon reviews skew heavily positive (most ratings are 4-5 stars), so
+  # stars_to_sentiment's label distribution is naturally imbalanced.
+  # Without this, training collapses into mostly predicting "positive"
+  # regardless of input. See src/data.py::compute_class_weights.
+  class_weighted_loss: true
 
 # --- Inference ---
 inference:

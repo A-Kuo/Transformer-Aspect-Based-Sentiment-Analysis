@@ -77,6 +77,23 @@ class AspectSentimentModel(nn.Module):
         num_sentiment_labels: Number of sentiment classes (default: 3)
         dropout:             Dropout probability before classification heads
         loss_alpha:          Weight for aspect loss in joint loss (0-1)
+        aspect_class_weights:    Optional (num_aspect_labels,) tensor passed
+            to F.cross_entropy's `weight` arg, to counter class imbalance
+            (see src/data.py::compute_class_weights). Training-only — has
+            no effect on predict()/inference.
+        sentiment_class_weights: Same, for the sentiment head. Amazon
+            reviews skew heavily positive (see src/data.py's
+            stars_to_sentiment), so training without this can collapse
+            into mostly predicting "positive" regardless of input.
+
+    Deliberately NOT registered as nn.Module buffers: a buffer would be
+    saved into checkpoint["model_state_dict"], and a checkpoint trained
+    with weights would then fail to load_state_dict() into a model built
+    without them (e.g. src.inference.Predictor.from_checkpoint(), which
+    always calls build_model(config) with no weights — class weights only
+    matter for the training loss, never for inference). Keeping them as
+    plain attributes means checkpoints are identical whether or not
+    class-weighted training was used.
     """
 
     def __init__(
@@ -86,12 +103,16 @@ class AspectSentimentModel(nn.Module):
         num_sentiment_labels: int = 3,
         dropout: float = 0.1,
         loss_alpha: float = 0.5,
+        aspect_class_weights: Optional[torch.Tensor] = None,
+        sentiment_class_weights: Optional[torch.Tensor] = None,
     ):
         super().__init__()
 
         self.loss_alpha = loss_alpha
         self.num_aspect_labels = num_aspect_labels
         self.num_sentiment_labels = num_sentiment_labels
+        self.aspect_class_weights = aspect_class_weights
+        self.sentiment_class_weights = sentiment_class_weights
 
         # --- Shared BERT backbone ---
         # 12 transformer layers, 12 attention heads, 768 hidden dim
@@ -210,8 +231,12 @@ class AspectSentimentModel(nn.Module):
 
         # --- Compute joint loss if labels provided ---
         if aspect_labels is not None and sentiment_labels is not None:
-            aspect_loss = F.cross_entropy(aspect_logits, aspect_labels)
-            sentiment_loss = F.cross_entropy(sentiment_logits, sentiment_labels)
+            aspect_loss = F.cross_entropy(
+                aspect_logits, aspect_labels, weight=self.aspect_class_weights
+            )
+            sentiment_loss = F.cross_entropy(
+                sentiment_logits, sentiment_labels, weight=self.sentiment_class_weights
+            )
 
             # Joint loss: weighted combination
             # α controls how much the aspect task influences backbone updates
@@ -305,7 +330,11 @@ class AspectSentimentModel(nn.Module):
         logger.info(f"Unfroze all parameters. Trainable: {trainable:,}")
 
 
-def build_model(config: dict) -> AspectSentimentModel:
+def build_model(
+    config: dict,
+    aspect_class_weights: Optional[torch.Tensor] = None,
+    sentiment_class_weights: Optional[torch.Tensor] = None,
+) -> AspectSentimentModel:
     """
     Factory function: build model from config.
 
@@ -313,6 +342,11 @@ def build_model(config: dict) -> AspectSentimentModel:
 
     Args:
         config: Loaded config dict.
+        aspect_class_weights, sentiment_class_weights: Optional per-class
+            loss weights (see src/data.py::compute_class_weights). Only
+            meaningful when training — pass None (default) when building
+            a model purely for inference, e.g. in
+            src.inference.Predictor.from_checkpoint().
 
     Returns:
         Initialized AspectSentimentModel on appropriate device.
@@ -325,6 +359,8 @@ def build_model(config: dict) -> AspectSentimentModel:
         num_sentiment_labels=model_cfg["num_sentiment_labels"],
         dropout=model_cfg["dropout"],
         loss_alpha=0.5,  # Equal weight; tune in Phase 2
+        aspect_class_weights=aspect_class_weights,
+        sentiment_class_weights=sentiment_class_weights,
     )
 
     # Determine device
@@ -336,6 +372,13 @@ def build_model(config: dict) -> AspectSentimentModel:
         device = torch.device("cpu")
 
     model = model.to(device)
+    # Class weights aren't nn.Module buffers (see AspectSentimentModel's
+    # docstring for why), so model.to(device) doesn't move them — do it
+    # explicitly here, once, rather than on every forward() call.
+    if model.aspect_class_weights is not None:
+        model.aspect_class_weights = model.aspect_class_weights.to(device)
+    if model.sentiment_class_weights is not None:
+        model.sentiment_class_weights = model.sentiment_class_weights.to(device)
     logger.info(f"Model on device: {device}")
 
     return model

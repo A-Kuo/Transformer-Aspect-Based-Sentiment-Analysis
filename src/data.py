@@ -29,8 +29,10 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import torch
 import yaml
+from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer
 
@@ -176,6 +178,45 @@ def stars_to_sentiment(stars: int) -> int:
         return 1  # neutral
     else:
         return 2  # positive
+
+
+# ============================================================
+# Class-weighted loss support
+# ============================================================
+
+def compute_class_weights(labels: List[int], num_classes: int) -> torch.Tensor:
+    """
+    Inverse-frequency class weights for imbalanced classification.
+
+    Amazon reviews skew heavily positive (most ratings are 4-5 stars), so
+    stars_to_sentiment's label distribution is naturally imbalanced —
+    training the sentiment head without correcting for this can collapse
+    into mostly predicting "positive" regardless of input, since that's
+    the loss-minimizing shortcut on skewed data. This uses sklearn's
+    standard "balanced" heuristic: weight[c] = n_samples / (n_classes *
+    count[c]), so rarer classes contribute proportionally more to the
+    loss. Pass the result to src.model.build_model() as
+    aspect_class_weights/sentiment_class_weights.
+
+    Args:
+        labels: The training split's label list (int class ids).
+        num_classes: Total number of classes the head predicts — NOT
+            necessarily len(set(labels)), since a class with zero
+            training examples still needs a slot in the returned tensor
+            (weight 0, since there's no gradient signal for it either way).
+
+    Returns:
+        (num_classes,) float tensor, ready to pass as F.cross_entropy's
+        `weight` argument.
+    """
+    present = sorted(set(labels))
+    computed = compute_class_weight(
+        class_weight="balanced", classes=np.array(present), y=np.array(labels)
+    )
+    weights = np.zeros(num_classes, dtype=np.float32)
+    for class_id, weight in zip(present, computed):
+        weights[class_id] = weight
+    return torch.tensor(weights, dtype=torch.float32)
 
 
 # ============================================================
