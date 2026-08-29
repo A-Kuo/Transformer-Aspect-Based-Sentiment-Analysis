@@ -6,7 +6,9 @@
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Transformers-yellow.svg)](https://huggingface.co/transformers)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org)
 
-> *Standard sentiment asks “positive or negative?” This project asks “*which theme* (quality, shipping, …) and *what polarity*?” — using a shared transformer encoder and task-specific heads.*
+> *Standard sentiment asks “positive or negative?” This project asks “*which theme* (quality, shipping, …) and *what polarity*?”
+>
+> — uses a shared transformer encoder and task-specific heads.*
 
 ---
 
@@ -151,3 +153,7 @@ Checkpoints are loaded with `weights_only=False` where PyTorch requires it for f
 ## License
 
 MIT License — see [LICENSE](LICENSE).
+
+---
+
+> *Model sentiment understanding is one step closer to pretending to bypass the Turing Test*
