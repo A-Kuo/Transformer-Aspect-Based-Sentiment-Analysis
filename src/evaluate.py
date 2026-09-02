@@ -33,7 +33,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Optional
 
 import numpy as np
 from sklearn.metrics import (
@@ -301,6 +301,101 @@ def print_report(metrics: Dict) -> None:
                 f"(n={vals['num_samples']})"
             )
 
+    print(f"{'='*70}\n")
+
+
+# ============================================================
+# Success criteria (config.yaml's monitoring.* targets)
+# ============================================================
+
+def check_targets(metrics: Dict, config: Dict) -> List[Dict]:
+    """
+    Compare evaluation metrics against config.yaml's monitoring.* target
+    thresholds. Returns a flat list of check dicts so every caller (CLI's
+    print_targets_report, the Kaggle notebook, app.py's Model Info page)
+    renders the same pass/fail summary from one source of truth instead
+    of three copies of this comparison logic.
+
+    See config.yaml's monitoring section for what "floor" vs "target"
+    mean and why these numbers are project-specific, not generic ABSA
+    benchmarks.
+    """
+    thresholds = config.get("monitoring", {})
+    checks = []
+
+    def add(name: str, actual: float, floor_key: str, target_key: Optional[str] = None) -> None:
+        floor = thresholds.get(floor_key)
+        target = thresholds.get(target_key) if target_key else None
+        if floor is None and target is None:
+            return
+        checks.append({
+            "name": name,
+            "actual": round(float(actual), 4),
+            "floor": floor,
+            "target": target,
+            "meets_floor": actual >= floor if floor is not None else None,
+            "meets_target": actual >= target if target is not None else None,
+        })
+
+    add("Aspect accuracy", metrics["aspect"]["accuracy"], "aspect_accuracy_floor", "aspect_accuracy_target")
+    add("Aspect macro F1", metrics["aspect"]["macro_f1"], "aspect_macro_f1_floor", "aspect_macro_f1_target")
+    add(
+        "Sentiment accuracy",
+        metrics["sentiment"]["accuracy"],
+        "sentiment_accuracy_floor",
+        "sentiment_accuracy_target",
+    )
+    add(
+        "Sentiment macro F1",
+        metrics["sentiment"]["macro_f1"],
+        "sentiment_macro_f1_floor",
+        "sentiment_macro_f1_target",
+    )
+
+    per_class = metrics.get("sentiment", {}).get("per_class", {})
+    for sentiment_name in ("negative", "neutral", "positive"):
+        cls = per_class.get(sentiment_name)
+        floor_key = f"sentiment_{sentiment_name}_recall_floor"
+        if cls is not None and floor_key in thresholds:
+            add(f"Sentiment '{sentiment_name}' recall", cls["recall"], floor_key)
+
+    return checks
+
+
+def print_targets_report(checks: List[Dict]) -> None:
+    """Print a PASS/FAIL summary against config.yaml's monitoring targets."""
+    print(f"\n{'='*70}")
+    print("SUCCESS CRITERIA")
+    print(f"{'='*70}")
+
+    if not checks:
+        print("  (No monitoring targets configured in config.yaml.)")
+        print(f"{'='*70}\n")
+        return
+
+    all_floors_met = True
+    for c in checks:
+        bar_parts = []
+        if c["floor"] is not None:
+            bar_parts.append(f"floor={c['floor']:.2f}")
+        if c["target"] is not None:
+            bar_parts.append(f"target={c['target']:.2f}")
+        bar = " / ".join(bar_parts)
+
+        if c["meets_floor"] is False:
+            status = "BELOW FLOOR"
+            all_floors_met = False
+        elif c["meets_target"] is False:
+            status = "above floor, below target"
+        else:
+            status = "OK"
+        print(f"  {c['name']:28s} actual={c['actual']:.3f}  {bar:28s}  [{status}]")
+
+    print()
+    if all_floors_met:
+        print("  All floors met.")
+    else:
+        print("  One or more floors NOT met — investigate before relying on this run.")
     print(f"{'='*70}\n")
 
 

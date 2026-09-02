@@ -67,8 +67,44 @@ paths:
   results_dir: "results/"
   logs_dir: "results/logs/"
 
-# --- Monitoring thresholds (Phase 2) ---
+# --- Success criteria / target metrics (Phase 2) ---
+# Engineering sanity thresholds for THIS project's specific setup —
+# bert-base-uncased, weak-supervision labels (keyword-matched aspects,
+# star-rating-derived sentiment), a ~5-6K review Amazon subset, 3 epochs.
+# These are NOT generic industry ABSA benchmarks: published numbers for
+# domain-adapted models (FinBERT/ClinicalBERT on financial/clinical text)
+# use much larger domain-specific corpora and often cleaner labels, so
+# they aren't a fair comparison for a weak-supervision prototype on
+# general product reviews. Treat these as a first-pass hypothesis to
+# check against real results (see notebooks/kaggle_train_and_push.ipynb
+# and app.py's "Model Info" page), and recalibrate once real numbers
+# land — not a claim about state-of-the-art performance.
+#
+# "floor" = minimum bar; below this, something is likely broken (a
+# labeling bug, a training loop bug, class weights not applying).
+# "target" = aspirational bar for a healthy run given this setup's known
+# constraints (label noise, small dataset, few epochs).
 monitoring:
-  accuracy_floor: 0.92           # Alert if accuracy drops below this
   latency_ceiling_ms: 500        # p99 latency SLA
   drift_check_interval_hours: 24
+
+  # Aspect classification (5-way, weak-supervision keyword labels — the
+  # noisier of the two signals, so the ceiling is set lower).
+  aspect_accuracy_floor: 0.55
+  aspect_accuracy_target: 0.70
+  aspect_macro_f1_floor: 0.45
+  aspect_macro_f1_target: 0.60
+
+  # Sentiment classification (3-way, star-rating-derived labels — a
+  # cleaner signal than the aspect labels, but skewed positive; see
+  # training.class_weighted_loss above).
+  sentiment_accuracy_floor: 0.70
+  sentiment_accuracy_target: 0.82
+  sentiment_macro_f1_floor: 0.60
+  sentiment_macro_f1_target: 0.75
+  # Per-class recall floors. Positive recall is "free" from the label
+  # skew even for a lazy model — negative/neutral recall are the real
+  # evidence that class-weighted loss is actually working.
+  sentiment_negative_recall_floor: 0.60
+  sentiment_neutral_recall_floor: 0.45
+  sentiment_positive_recall_floor: 0.70

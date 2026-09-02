@@ -145,10 +145,18 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
       - Per-aspect sentiment accuracy (cross-task analysis)
       - Latency percentiles (p50/p95/p99) with SLA check
 
-    Saves results to results/metrics.json.
+    Saves results to results/metrics.json, then prints a PASS/FAIL
+    summary against config.yaml's monitoring.* success-criteria
+    thresholds (see that section's comment for what they mean).
     """
     from src.data import create_dataloaders
-    from src.evaluate import evaluate_model, print_report, save_metrics
+    from src.evaluate import (
+        check_targets,
+        evaluate_model,
+        print_report,
+        print_targets_report,
+        save_metrics,
+    )
     from src.inference import Predictor
 
     config = load_config(args.config)
@@ -178,15 +186,7 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
 
     save_metrics(metrics, output_path)
     print_report(metrics)
-
-    # Warn if below accuracy floor
-    acc_floor = config.get("monitoring", {}).get("accuracy_floor", 0.0)
-    sent_acc = metrics["sentiment"]["accuracy"]
-    if sent_acc < acc_floor:
-        logging.warning(
-            f"Sentiment accuracy {sent_acc:.3f} below floor {acc_floor}. "
-            f"Consider more data or hyperparameter tuning."
-        )
+    print_targets_report(check_targets(metrics, config))
 
 
 def cmd_predict(args: argparse.Namespace) -> None:

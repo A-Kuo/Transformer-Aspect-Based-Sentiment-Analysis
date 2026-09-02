@@ -25,6 +25,7 @@ than crashing the app — see load_predictor().
 """
 
 import html
+import json
 import logging
 import os
 import time
@@ -34,6 +35,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from src.evaluate import check_targets
 from src.inference import Predictor
 
 logger = logging.getLogger(__name__)
@@ -355,6 +357,70 @@ def render_confusion_matrix(matrix: list, labels: list) -> None:
     )
 
 
+def render_success_criteria(checks: list) -> None:
+    # See config.yaml's monitoring section for what "floor"/"target" mean
+    # and why they're project-specific numbers, not generic ABSA benchmarks.
+    if not checks:
+        st.caption("No monitoring targets configured in config.yaml.")
+        return
+
+    status_style = {
+        "BELOW FLOOR": ("#FEF2F2", "#EF4444", "#7F1D1D"),
+        "above floor, below target": ("#FFFBEB", "#F59E0B", "#78350F"),
+        "OK": ("#ECFDF5", "#10B981", "#064E3B"),
+    }
+    rows_html = []
+    for c in checks:
+        if c["meets_floor"] is False:
+            status = "BELOW FLOOR"
+        elif c["meets_target"] is False:
+            status = "above floor, below target"
+        else:
+            status = "OK"
+        bg, border, text = status_style[status]
+        bar = " / ".join(
+            s
+            for s in (
+                f"floor {c['floor']:.2f}" if c["floor"] is not None else "",
+                f"target {c['target']:.2f}" if c["target"] is not None else "",
+            )
+            if s
+        )
+        rows_html.append(
+            f'<tr>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid rgba(128,128,128,0.25);">{html.escape(c["name"])}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid rgba(128,128,128,0.25);">{c["actual"]:.3f}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid rgba(128,128,128,0.25);">{bar}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid rgba(128,128,128,0.25);">'
+            f'<span style="background:{bg};color:{text};border:1px solid {border};border-radius:12px;'
+            f'padding:2px 10px;font-size:13px;">{status}</span></td>'
+            f'</tr>'
+        )
+    st.markdown(
+        f"""
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+            <thead>
+                <tr style="text-align:left;border-bottom:2px solid rgba(128,128,128,0.4);">
+                    <th style="padding:8px 12px;">Metric</th>
+                    <th style="padding:8px 12px;">Actual</th>
+                    <th style="padding:8px 12px;">Floor / Target</th>
+                    <th style="padding:8px 12px;">Status</th>
+                </tr>
+            </thead>
+            <tbody>{"".join(rows_html)}</tbody>
+        </table>
+        """,
+        unsafe_allow_html=True,
+    )
+    if any(c["meets_floor"] is False for c in checks):
+        st.warning(
+            "One or more metrics are below their floor — this run likely has a real "
+            "problem (a labeling bug, undertraining, or class imbalance not being "
+            "corrected), not just room for improvement.",
+            icon="⚠️",
+        )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Sidebar
 # ─────────────────────────────────────────────────────────────────────────────
@@ -470,27 +536,12 @@ elif page == "Example Gallery":
 elif page == "Model Info":
     st.title("Model Info")
     st.markdown(
-        "Provenance and evaluation metrics for the model currently loaded above, "
-        "pulled from the Neon-backed model registry once a trained run has been pushed."
+        "Provenance and evaluation metrics for the model currently loaded above: from "
+        "the Neon-backed model registry once a trained run has been pushed, or from a "
+        "local `python main.py evaluate` run otherwise."
     )
 
-    if model_source == "neon" and active_run is not None:
-        run = active_run
-        st.subheader(run["model_version"])
-
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Track", run["track"])
-        c2.metric("Environment", run["environment"])
-        c3.metric("Run timestamp (UTC)", run["run_timestamp"].strftime("%Y-%m-%d %H:%M"))
-        st.caption(
-            f"Weights: `{run['hf_repo_id']}` @ `{run['hf_revision'][:8]}` "
-            f"(`{run['hf_filename']}`)"
-        )
-        if run.get("notes"):
-            st.caption(f"Notes: {run['notes']}")
-
-        metrics = run["metrics"]
-        st.divider()
+    def render_metrics_report(metrics: dict) -> None:
         st.subheader("Evaluation metrics")
         st.caption(f"Evaluated on {metrics.get('num_samples', '?')} held-out samples.")
 
@@ -509,6 +560,15 @@ elif page == "Model Info":
                     task_metrics["confusion_matrix"], list(task_metrics["per_class"].keys())
                 )
 
+        st.divider()
+        st.subheader("Success criteria")
+        st.caption(
+            "Project-specific engineering targets (weak-supervision labels, small "
+            "dataset, few epochs) — not generic ABSA industry benchmarks. See "
+            "config.yaml's monitoring section for the full rationale."
+        )
+        render_success_criteria(check_targets(metrics, config))
+
         latency = metrics.get("latency")
         if latency:
             st.markdown("**Latency**")
@@ -521,10 +581,41 @@ elif page == "Model Info":
                 delta="SLA met" if latency.get("meets_sla") else "SLA breach",
                 delta_color="normal" if latency.get("meets_sla") else "inverse",
             )
+
+    local_metrics_path = ROOT / "results" / "metrics.json"
+
+    if model_source == "neon" and active_run is not None:
+        run = active_run
+        st.subheader(run["model_version"])
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Track", run["track"])
+        c2.metric("Environment", run["environment"])
+        c3.metric("Run timestamp (UTC)", run["run_timestamp"].strftime("%Y-%m-%d %H:%M"))
+        st.caption(
+            f"Weights: `{run['hf_repo_id']}` @ `{run['hf_revision'][:8]}` "
+            f"(`{run['hf_filename']}`)"
+        )
+        if run.get("notes"):
+            st.caption(f"Notes: {run['notes']}")
+
+        st.divider()
+        render_metrics_report(run["metrics"])
+    elif model_source == "local" and local_metrics_path.exists():
+        st.subheader(f"Local checkpoint: `{CHECKPOINT_PATH.relative_to(ROOT)}`")
+        st.caption(
+            f"From `{local_metrics_path.relative_to(ROOT)}` (produced by "
+            "`python main.py evaluate`) — not tracked in the Neon registry."
+        )
+        st.divider()
+        render_metrics_report(json.loads(local_metrics_path.read_text()))
     else:
         st.info(
-            "No trained run recorded in the Neon registry yet. Train on Kaggle "
+            "No trained run recorded in the Neon registry, and no local "
+            f"`{local_metrics_path.relative_to(ROOT)}` either. Train on Kaggle "
             "(`notebooks/kaggle_train_and_push.ipynb`) and push the results with "
-            "`python scripts/load_absa_results.py results.json` to see metrics here.",
+            "`python scripts/load_absa_results.py results.json`, or run "
+            "`python main.py train` and `python main.py evaluate` locally, to see "
+            "metrics here.",
             icon="ℹ️",
         )

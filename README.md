@@ -43,6 +43,29 @@ Conceptual ABSA diagrams in older docs (biaffine triples, restaurant “AspectTr
 
 ---
 
+## Success criteria & target metrics
+
+Training is a weak-supervision setup — aspects are keyword-matched, sentiment comes from star ratings — on a modest Amazon-reviews subset (5,000 train / 1,000 val / 500 test by default), fine-tuning `bert-base-uncased` for 3 epochs. `config.yaml`'s `monitoring` section defines two-tier engineering thresholds for that specific setup:
+
+- **floor** — the minimum bar; below this, something is likely broken (a labeling bug, undertraining, class weights not applying), not just "needs more tuning."
+- **target** — the aspirational bar for a healthy first-pass run given this setup's known constraints (label noise, small dataset, few epochs).
+
+| Metric | Floor | Target |
+|---|---|---|
+| Aspect accuracy | 0.55 | 0.70 |
+| Aspect macro F1 | 0.45 | 0.60 |
+| Sentiment accuracy | 0.70 | 0.82 |
+| Sentiment macro F1 | 0.60 | 0.75 |
+| Sentiment recall — negative / neutral / positive | 0.60 / 0.45 / 0.70 | — |
+
+**These are project-specific engineering targets, not industry ABSA benchmarks.** Published numbers for domain-adapted models (e.g. FinBERT on financial text, ClinicalBERT on clinical notes) use much larger domain-specific corpora and often cleaner labels, so they aren't a fair comparison for a weak-supervision prototype on general product reviews — don't cite them as this project's expected performance.
+
+Amazon reviews skew heavily positive (most ratings are 4–5 stars), which without correction collapses training into mostly predicting "positive" regardless of input — this is why the per-class sentiment recall floors exist separately from overall accuracy, and why `training.class_weighted_loss` (`src/data.py::compute_class_weights`, sklearn's inverse-frequency "balanced" heuristic) is on by default.
+
+`python main.py evaluate` and `notebooks/kaggle_train_and_push.ipynb` both print a PASS/FAIL report against these thresholds (`src.evaluate.check_targets` / `print_targets_report`) right after evaluation. The Streamlit dashboard's **Model Info** page (`make app`, or `streamlit run app.py`) renders the same comparison live against whichever model is currently loaded — from the Neon-backed model registry once a Kaggle run has been pushed, or from a local `python main.py evaluate` run otherwise. Recalibrate the thresholds once real results land; they're a first-pass hypothesis, not a guarantee.
+
+---
+
 ## Installation
 
 ```bash
@@ -56,6 +79,13 @@ pip install -e ".[dev]"
 
 # Optional: Mamba2 middle blocks for V3 (Linux/CUDA typical; see V3/V3_ITERATION_PLAN.md)
 # pip install -e ".[v3]"
+
+# Optional: Streamlit dashboard (app.py)
+# pip install -e ".[app]"
+
+# Optional: Neon Postgres model registry + Hugging Face Hub weight delivery
+# (scripts/load_absa_results.py needs this; app.py degrades gracefully without it)
+# pip install -e ".[db]"
 ```
 
 ---
@@ -67,6 +97,7 @@ python main.py train
 python main.py evaluate
 python main.py predict "Great quality but shipping took 3 weeks"
 python main.py info
+streamlit run app.py     # or: make app
 ```
 
 Or with `make`: `make train`, `make evaluate`, `make test`.
@@ -98,15 +129,22 @@ Untrained heads (baseline): `Predictor.from_pretrained(config_path="config.yaml"
 
 ```text
 .
-├── main.py              # CLI
-├── config.yaml          # Hyperparameters
-├── src/                 # data, model, train, inference, evaluate
-├── tests/test_core.py   # Smoke tests
-├── V2/                  # Experimental iteration 2
-├── V3/                  # Hybrid SSM–attention iteration 3
-├── models/              # Checkpoints (gitignored)
-└── results/             # Metrics (gitignored)
+├── main.py                          # CLI (train/evaluate/predict/info)
+├── app.py                           # Streamlit triage dashboard (make app)
+├── config.yaml                      # Hyperparameters + success-criteria targets
+├── src/                             # data, model, train, inference, evaluate, db
+├── tests/                           # Smoke tests
+├── V2/                              # Experimental iteration 2
+├── V3/                              # Hybrid SSM–attention iteration 3
+├── notebooks/                       # Inference/data/feature walkthroughs +
+│                                     #   kaggle_train_and_push.ipynb
+├── db/schema.sql                    # Neon Postgres model-registry schema
+├── scripts/load_absa_results.py     # Push a Kaggle run's results into Neon
+├── models/                          # Checkpoints (gitignored)
+└── results/                         # Metrics (gitignored)
 ```
+
+A trained model reaches the dashboard one of two ways: push results from `notebooks/kaggle_train_and_push.ipynb` via `scripts/load_absa_results.py` (weights on Hugging Face Hub, provenance/metrics in Neon), or train locally with `python main.py train` (reads `models/checkpoint_best.pt` directly). Either way, `app.py` falls back gracefully — Neon-backed run → local checkpoint → untrained baseline — never crashing on a missing/unreachable data source.
 
 ---
 
