@@ -101,6 +101,22 @@ ASPECT_KEYWORDS: Dict[int, Dict[str, List[str]]] = {
     },
 }
 
+# Precompiled word-boundary patterns, built once at import time — assign_aspect
+# runs once per review over the whole training corpus (~6,500+ calls for the
+# default split), so recompiling per call would be wasteful. \b works
+# correctly for multi-word phrases too: it anchors on the phrase's first/last
+# characters, not on internal spaces, so r"\bwell made\b" matches "the build
+# is well made" but not "wellmadeup" or "well madeup". Word boundaries matter
+# here because short keywords like "late" or "box" are substrings of common
+# unrelated words ("chocolate", "boxed") — see assign_aspect's docstring.
+_ASPECT_KEYWORD_PATTERNS: Dict[int, List[re.Pattern]] = {
+    aspect_id: [
+        re.compile(r"\b" + re.escape(keyword) + r"\b")
+        for keyword in aspect_info["keywords"]
+    ]
+    for aspect_id, aspect_info in ASPECT_KEYWORDS.items()
+}
+
 
 def load_config(config_path: str = "config.yaml") -> dict:
     """Load YAML configuration file."""
@@ -136,15 +152,8 @@ def assign_aspect(text: str) -> int:
     text_lower = text.lower()
     scores = {}
 
-    for aspect_id, aspect_info in ASPECT_KEYWORDS.items():
-        count = 0
-        for keyword in aspect_info["keywords"]:
-            # Use word boundary matching to avoid partial matches
-            # e.g., "price" shouldn't match "priceless" differently
-            # but simple 'in' check is fine for prototype
-            if keyword in text_lower:
-                count += 1
-        scores[aspect_id] = count
+    for aspect_id, patterns in _ASPECT_KEYWORD_PATTERNS.items():
+        scores[aspect_id] = sum(1 for pattern in patterns if pattern.search(text_lower))
 
     # Pick highest-scoring aspect; default to quality (0) on ties/zeros
     max_score = max(scores.values())
@@ -184,7 +193,9 @@ def stars_to_sentiment(stars: int) -> int:
 # Class-weighted loss support
 # ============================================================
 
-def compute_class_weights(labels: List[int], num_classes: int) -> torch.Tensor:
+def compute_class_weights(
+    labels: List[int], num_classes: int, power: float = 0.5
+) -> torch.Tensor:
     """
     Inverse-frequency class weights for imbalanced classification.
 
@@ -198,12 +209,24 @@ def compute_class_weights(labels: List[int], num_classes: int) -> torch.Tensor:
     loss. Pass the result to src.model.build_model() as
     aspect_class_weights/sentiment_class_weights.
 
+    Full "balanced" weighting (power=1.0) can itself overcorrect under
+    severe imbalance combined with limited training: an undertrained model
+    can take the new "cheap win" of collapsing all predictions onto
+    whichever class now carries the highest loss-weight — e.g. "neutral"
+    (3-star reviews), typically the rarest sentiment class, once positive's
+    dominance is corrected for. `power` dampens the correction:
+    final_weight[c] = balanced_weight[c] ** power. 1.0 = full correction
+    (previous behavior); 0.5 (default) = sqrt-dampened, softer; 0.0 =
+    uniform weight 1.0 for every present class (no correction).
+
     Args:
         labels: The training split's label list (int class ids).
         num_classes: Total number of classes the head predicts — NOT
             necessarily len(set(labels)), since a class with zero
             training examples still needs a slot in the returned tensor
-            (weight 0, since there's no gradient signal for it either way).
+            (weight 0 regardless of `power`, since there's no gradient
+            signal for it either way).
+        power: Dampening exponent applied to the balanced weights.
 
     Returns:
         (num_classes,) float tensor, ready to pass as F.cross_entropy's
@@ -213,6 +236,7 @@ def compute_class_weights(labels: List[int], num_classes: int) -> torch.Tensor:
     computed = compute_class_weight(
         class_weight="balanced", classes=np.array(present), y=np.array(labels)
     )
+    computed = computed**power
     weights = np.zeros(num_classes, dtype=np.float32)
     for class_id, weight in zip(present, computed):
         weights[class_id] = weight

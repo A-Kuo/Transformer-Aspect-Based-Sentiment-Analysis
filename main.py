@@ -92,14 +92,15 @@ def cmd_train(args: argparse.Namespace) -> None:
     sentiment_class_weights = None
     if config["training"].get("class_weighted_loss", False):
         train_dataset = dataloaders["train"].dataset
+        power = config["training"].get("class_weight_power", 1.0)
         aspect_class_weights = compute_class_weights(
-            train_dataset.aspect_labels, config["model"]["num_aspect_labels"]
+            train_dataset.aspect_labels, config["model"]["num_aspect_labels"], power=power
         )
         sentiment_class_weights = compute_class_weights(
-            train_dataset.sentiment_labels, config["model"]["num_sentiment_labels"]
+            train_dataset.sentiment_labels, config["model"]["num_sentiment_labels"], power=power
         )
-        logging.info(f"Class-weighted loss enabled. Aspect weights: {aspect_class_weights.tolist()}")
-        logging.info(f"Class-weighted loss enabled. Sentiment weights: {sentiment_class_weights.tolist()}")
+        logging.info(f"Class-weighted loss enabled (power={power}). Aspect weights: {aspect_class_weights.tolist()}")
+        logging.info(f"Class-weighted loss enabled (power={power}). Sentiment weights: {sentiment_class_weights.tolist()}")
 
     model = build_model(
         config,

@@ -54,6 +54,15 @@ training:
   # Without this, training collapses into mostly predicting "positive"
   # regardless of input. See src/data.py::compute_class_weights.
   class_weighted_loss: true
+  # Dampening exponent for the "balanced" weights above (weight ** power).
+  # 1.0 = full inverse-frequency correction. Full correction over-corrects
+  # under severe imbalance + few epochs: an undertrained model can take
+  # the "cheap win" of collapsing all predictions onto whichever class
+  # currently carries the highest loss-weight — this is what happened
+  # with "neutral" (the rarest sentiment class) after class_weighted_loss
+  # was first added. 0.5 (sqrt) softens the correction; 0.0 = uniform, no
+  # correction. Applies to both heads — see src/data.py::compute_class_weights.
+  class_weight_power: 0.5
 
 # --- Inference ---
 inference:

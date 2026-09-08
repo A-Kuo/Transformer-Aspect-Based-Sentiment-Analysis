@@ -151,6 +151,16 @@ class TestDataPipeline:
         label = assign_aspect(text)
         assert label == 3  # shipping
 
+    def test_assign_aspect_no_shipping_false_positive_on_substring(self):
+        """Regression test: "late"/"box" as substrings of unrelated words
+        (chocolate, boxed) must not spuriously trigger shipping — this was
+        exactly the bug that inflated shipping's weak-supervision label
+        share under naive substring matching."""
+        text = "This lotion smells like chocolate and came in a nicely boxed set"
+        label = assign_aspect(text)
+        assert label != 3  # must NOT spuriously match shipping
+        assert label == 0  # falls through to default (quality)
+
     def test_assign_aspect_default(self):
         """No keyword matches → defaults to quality (0)."""
         text = "asdfghjkl random gibberish"
