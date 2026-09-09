@@ -308,6 +308,29 @@ class ReviewDataset(Dataset):
 # Data loading & preprocessing
 # ============================================================
 
+def _review_jsonl_url(dataset_name: str, dataset_subset: str) -> str:
+    """
+    URL for McAuley-Lab/Amazon-Reviews-2023's raw per-category review file.
+
+    The dataset repo's own loading script (Amazon-Reviews-2023.py) is no
+    longer usable: datasets>=4 refuses to execute repo-provided loading
+    scripts at all (a security hardening change), so `load_dataset(name,
+    subset, trust_remote_code=True)` now fails with "Dataset scripts are
+    no longer supported" regardless of trust_remote_code. The same review
+    data is also hosted as a plain JSONL file per category at
+    raw/review_categories/{category}.jsonl in the same repo (verified via
+    the repo's file tree) — loading that directly through the generic
+    "json" builder sidesteps the script entirely, works on any datasets
+    version, and needs no trust_remote_code.
+
+    `dataset_subset` is expected in the script's old "raw_review_{category}"
+    naming convention (e.g. "raw_review_All_Beauty"); the "raw_review_"
+    prefix is stripped to get the category name used in the file path.
+    """
+    category = dataset_subset.removeprefix("raw_review_")
+    return f"https://huggingface.co/datasets/{dataset_name}/resolve/main/raw/review_categories/{category}.jsonl"
+
+
 def load_and_preprocess(
     config: dict,
     split: str = "train",
@@ -345,23 +368,16 @@ def load_and_preprocess(
         f"{data_cfg['dataset_name']} / {data_cfg['dataset_subset']}..."
     )
 
-    # Stream to avoid massive downloads; take what we need
+    # Load the raw per-category JSONL directly (see _review_jsonl_url) —
+    # NOT the dataset repo's own loading script, which datasets>=4 refuses
+    # to run at all. Stream to avoid downloading the whole (multi-hundred-MB)
+    # file; take only what we need.
+    jsonl_url = _review_jsonl_url(data_cfg["dataset_name"], data_cfg["dataset_subset"])
     try:
-        ds = load_dataset(
-            data_cfg["dataset_name"],
-            data_cfg["dataset_subset"],
-            split="full",
-            streaming=True,
-            trust_remote_code=True,
-        )
+        ds = load_dataset("json", data_files=jsonl_url, split="train", streaming=True)
     except Exception as e:
         logger.warning(f"Streaming load failed ({e}), trying non-streaming...")
-        ds = load_dataset(
-            data_cfg["dataset_name"],
-            data_cfg["dataset_subset"],
-            split="full",
-            trust_remote_code=True,
-        )
+        ds = load_dataset("json", data_files=jsonl_url, split="train")
 
     # Collect samples
     texts = []
